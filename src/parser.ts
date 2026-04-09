@@ -67,6 +67,7 @@ export function parseTranscript(
     teams: [],
     tasks: [],
     tokenUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+    contextTokens: 0,
     messageCount: { user: 0, assistant: 0, system: 0 },
     recentFiles: [],
     sessionTeamNames: new Set(),
@@ -200,6 +201,15 @@ function processEntry(state: SessionState, entry: TranscriptEntry): void {
     state.tokenUsage.output += u.output_tokens || 0;
     state.tokenUsage.cacheWrite += u.cache_creation_input_tokens || 0;
     state.tokenUsage.cacheRead += u.cache_read_input_tokens || 0;
+    // Track current context window size (sum of all input token types)
+    if (entry.message.role === 'assistant') {
+      const totalInput = (u.input_tokens || 0)
+        + (u.cache_creation_input_tokens || 0)
+        + (u.cache_read_input_tokens || 0);
+      if (totalInput > 0) {
+        state.contextTokens = totalInput;
+      }
+    }
   }
 
   // Track tool usage

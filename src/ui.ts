@@ -117,6 +117,17 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour12: false });
 }
 
+/** Get context window limit for a given model string */
+function getContextLimit(model: string): number {
+  const m = model.toLowerCase();
+  // Opus 4.6+ defaults to 1M context
+  if (m.includes('opus-4-6') || m.includes('opus-4-5')) return 1_000_000;
+  if (m.includes('opus')) return 200_000;
+  if (m.includes('sonnet')) return 200_000;
+  if (m.includes('haiku')) return 200_000;
+  return 200_000;
+}
+
 export function render(state: SessionState | null, fileEvents: Array<{ path: string; time: Date; event: string }>): void {
   const W = process.stdout.columns || 80;
 
@@ -124,12 +135,15 @@ export function render(state: SessionState | null, fileEvents: Array<{ path: str
   const now = new Date();
 
   // Header bar
-  const headerText = ` CLAUDE CODE MONITOR `;
+  const headerText = ` Claude Code Monitor `;
   const timeText = ` ${formatTime(now)} `;
   const headerPad = W - headerText.length - timeText.length;
   lines.push(
-    `${BG.blue}${FG.white}${BOLD}${headerText}${' '.repeat(Math.max(0, headerPad))}${timeText}${RESET}`,
+    `${BG.gray}${FG.white}${BOLD}${headerText}${' '.repeat(Math.max(0, headerPad))}${timeText}${RESET}`,
   );
+  // Current working directory
+  const cwdPath = state ? state.projectDir.replace(/.*projects\//, '').replace(/-/g, '/') : process.cwd();
+  lines.push(`${DIM} ${cwdPath}${RESET}`);
 
   if (!state) {
     lines.push('');
@@ -142,9 +156,13 @@ export function render(state: SessionState | null, fileEvents: Array<{ path: str
   // Session info (2 lines for narrow screens)
   const sessionAge = formatDuration(now.getTime() - state.startTime.getTime());
   const sinceActivity = formatDuration(now.getTime() - state.lastActivity.getTime());
+  const ctxLimit = getContextLimit(state.model);
+  const ctxPct = state.contextTokens > 0 ? Math.round((state.contextTokens / ctxLimit) * 100) : 0;
+  const ctxColor = ctxPct >= 85 ? FG.red : ctxPct >= 70 ? FG.yellow : FG.green;
   lines.push(
     `${DIM} Session:${RESET}${FG.cyan}${state.sessionId.slice(0, 8)}${RESET}` +
     `${DIM} Model:${RESET}${FG.green}${state.model}${RESET}` +
+    `${DIM} Ctx:${RESET}${ctxColor}${ctxPct}%${RESET}` +
     `${DIM} Age:${RESET}${sessionAge}` +
     `${DIM} Idle:${RESET}${sinceActivity}`,
   );

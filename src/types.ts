@@ -106,6 +106,8 @@ export interface SessionState {
   teams: TeamInfo[];
   tasks: Array<{ id: string; subject: string; status: string }>;
   tokenUsage: { input: number; output: number; cacheWrite: number; cacheRead: number };
+  /** Last input_tokens from the most recent assistant message (= current context size) */
+  contextTokens: number;
   messageCount: { user: number; assistant: number; system: number };
   recentFiles: Array<{ path: string; time: Date; event: string }>;
   sessionTeamNames: Set<string>;
