@@ -1,4 +1,4 @@
-# claude-monitor
+# ccmonitor
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -34,18 +34,24 @@ bun install
 bun run start
 ```
 
-### Standalone binary (no Bun required at runtime)
+### Global install (recommended)
 
 ```bash
 git clone https://github.com/tobyilee/ccmonitor.git && cd ccmonitor
-bun install && bun run build
-# Copy to a directory in your PATH:
-cp dist/claude-monitor ~/.bun/bin/ccmonitor
-# Or:
-sudo cp dist/claude-monitor /usr/local/bin/ccmonitor
+bun install
+bun run install:global
 ```
 
-The `bun build --compile` flag embeds the Bun runtime into a single binary (~54MB), so the target machine does not need Bun installed.
+This runs [`scripts/install.ts`](./scripts/install.ts), which builds the standalone binary via `bun build --compile` and installs it to `~/.bun/bin/ccmonitor` by default. After install, run it from anywhere with `ccmonitor`.
+
+**Options:**
+
+```bash
+bun run install:global -- --dir /usr/local/bin   # custom install directory
+bun run install:global -- --name ccmon           # custom binary name
+```
+
+The `bun build --compile` flag embeds the Bun runtime into a single binary (~54MB), so once installed, the machine does not need Bun on PATH to run it.
 
 ### Global link (for development)
 
@@ -54,7 +60,7 @@ cd ccmonitor
 bun link
 ```
 
-Creates a global symlink so `claude-monitor` is available from any directory. Changes to source files take effect immediately.
+Creates a global symlink so `ccmonitor` is available from any directory. Changes to source files take effect immediately.
 
 ## Usage
 
@@ -77,13 +83,14 @@ bun run start <sessionId>
 ### Build standalone binary
 
 ```bash
-bun run build    # outputs dist/claude-monitor
+bun run build    # outputs dist/ccmonitor
 ```
 
 ## Dashboard Panels
 
 | Panel | Shows |
 |-------|-------|
+| **Last Prompt** | The most recent user-typed prompt (wrapped to fit, truncated at 500 chars) |
 | **Tools** | Tool call counts, sorted by frequency |
 | **Subagents** | Running/completed agents with type, duration, description |
 | **Skill** | Active skill with elapsed time, last completed skill, history |
@@ -123,6 +130,25 @@ ccmonitor is **fully decoupled** from Claude Code — it imports nothing from th
 6. Watches for file changes via [chokidar](https://github.com/paulmillr/chokidar) to show live file activity
 
 ### Data Extraction Details
+
+#### Last User Prompt
+
+The "Last Prompt" panel shows the most recent actual user-typed prompt. Extracting it is trickier than it sounds — user-role transcript entries contain a mix of real input and system-injected noise:
+
+1. Tool results (`type: "tool_result"`)
+2. System reminders (`<system-reminder>...</system-reminder>`, `<local-command-caveat>...`, hook output)
+3. Slash-command markers (`<command-name>`, `<command-args>`, `<command-message>`)
+4. Bash output wrappers (`<bash-input>`, `<bash-stdout>`, `<bash-stderr>`)
+5. Task notifications (`<task-notification>...`)
+6. Skill expansion bodies (huge prose blobs injected when a slash-command skill loads)
+
+The extractor (`extractRealUserPrompt()` in `src/parser.ts`) handles these in priority order:
+
+1. **If `<command-args>` is present** → use its content (slash commands put the user's actual input there)
+2. **Otherwise** → strip all wrapper tags and return the remainder
+3. **Filter out** pure hook echo lines (`UserPromptSubmit hook success: ...`) and skill expansion preambles (`Base directory for this skill: ...`)
+
+The UI panel then applies a **500-character hard cap** (using `Array.from()` for true character counting, which handles emoji surrogate pairs correctly) and **word-wraps** the result to the terminal width with CJK-aware width calculations — Korean/Japanese/Chinese characters count as 2 cells, so wrapping respects their true display width.
 
 #### Tools
 

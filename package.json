@@ -1,15 +1,16 @@
 {
-  "name": "claude-monitor",
+  "name": "ccmonitor",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "bin": {
-    "claude-monitor": "src/index.ts"
+    "ccmonitor": "src/index.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile dist/claude-monitor"
+    "build": "bun build src/index.ts --compile --outfile dist/ccmonitor",
+    "install:global": "bun run scripts/install.ts"
   },
   "dependencies": {
     "chokidar": "^4.0.0"

@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**claude-monitor** — A standalone Bun TUI app that monitors Claude Code session activity in real time. It watches `~/.claude/` data files (JSONL transcripts, subagent metadata, team configs, task files) and renders a terminal dashboard showing tool usage, skills, subagents, teams, tasks, token consumption, and file activity.
+**ccmonitor** — A standalone Bun TUI app that monitors Claude Code session activity in real time. It watches `~/.claude/` data files (JSONL transcripts, subagent metadata, team configs, task files) and renders a terminal dashboard showing tool usage, skills, subagents, teams, tasks, token consumption, and file activity.
 
 ## Build & Run Commands
 
 ```bash
 bun run start          # Run the monitor (bun run src/index.ts)
 bun run dev            # Run with --watch for auto-reload
-bun run build          # Compile to standalone binary: dist/claude-monitor
+bun run build          # Compile to standalone binary: dist/ccmonitor
 ```
 
 Run with a specific session: `bun run src/index.ts <sessionId>`

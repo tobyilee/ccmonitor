@@ -73,6 +73,8 @@ export function parseTranscript(
     sessionTeamNames: new Set(),
     lastActivity: new Date(0),
     model: 'unknown',
+    lastUserPrompt: null,
+    lastUserPromptTime: null,
   };
 
   if (!existsSync(transcriptFile)) return state;
@@ -106,6 +108,61 @@ export function parseTranscript(
   loadSkillHookState(state);
 
   return state;
+}
+
+/**
+ * Extract the actual user-typed prompt from a raw user-message text block.
+ *
+ * User-role transcript entries contain a mix of:
+ *   - Real user input (what we want)
+ *   - <system-reminder>...</system-reminder> (hook injections, environment context)
+ *   - <local-command-caveat>...</local-command-caveat> (bash command banners)
+ *   - <command-name>/cmd</command-name>, <command-message>, <command-args> (slash command markers)
+ *   - <bash-input>/<bash-stdout>/<bash-stderr> (local bash output)
+ *
+ * This helper strips all of the above and returns the trimmed remainder,
+ * or null if nothing user-typed is left (pure tool_result / hook echo).
+ */
+export function extractRealUserPrompt(text: string): string | null {
+  if (!text) return null;
+
+  // Slash command invocations inject the full skill body into the user message,
+  // with the actual user-typed arguments in a <command-args> tag. When present,
+  // that tag's content IS the user's prompt — prefer it over the rest.
+  const argsMatch = text.match(/<command-args>([\s\S]*?)<\/command-args>/);
+  if (argsMatch) {
+    const args = argsMatch[1].trim();
+    // Empty args means a no-arg slash command like "/status" — fall back to the command name.
+    if (args) return args;
+    const nameMatch = text.match(/<command-name>\/?(.+?)<\/command-name>/);
+    if (nameMatch) return `/${nameMatch[1]}`;
+    return null;
+  }
+
+  let cleaned = text;
+  // Strip all known system-injected wrapper tags (including their content).
+  const wrapperTags = [
+    'system-reminder',
+    'local-command-caveat',
+    'command-message',
+    'command-name',
+    'bash-input',
+    'bash-stdout',
+    'bash-stderr',
+    'task-notification',
+  ];
+  for (const tag of wrapperTags) {
+    const re = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, 'g');
+    cleaned = cleaned.replace(re, '');
+  }
+  cleaned = cleaned.trim();
+  // If everything was a wrapper/hook echo, ignore it.
+  if (!cleaned) return null;
+  // Skip pure hook status lines like "UserPromptSubmit hook success: ..."
+  if (/^[A-Za-z]+ hook success:/.test(cleaned)) return null;
+  // Skip skill expansion bodies injected by Claude Code (they start with this preamble).
+  if (cleaned.startsWith('Base directory for this skill:')) return null;
+  return cleaned;
 }
 
 /** Promote the current activeSkill to lastCompletedSkill (if any). */
@@ -160,6 +217,15 @@ function processEntry(state: SessionState, entry: TranscriptEntry): void {
       : Array.isArray(content)
         ? content.filter(b => b.type === 'text').map(b => b.text || '').join('')
         : '';
+
+    // Extract and store the actual user-typed prompt.
+    // Strip system-injected wrappers and filter out tool-result-only entries.
+    const realPrompt = extractRealUserPrompt(text);
+    if (realPrompt) {
+      state.lastUserPrompt = realPrompt;
+      state.lastUserPromptTime = entryTime ?? new Date();
+    }
+
     const cmdMatch = text.match(/<command-name>\/?(.+?)<\/command-name>/);
     if (cmdMatch) {
       const skillName = cmdMatch[1];

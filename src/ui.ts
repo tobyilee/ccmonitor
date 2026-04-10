@@ -65,6 +65,64 @@ function displayWidth(s: string): number {
   return w;
 }
 
+/**
+ * Word-wrap text to a given display width, accounting for CJK fullwidth
+ * characters. Breaks on whitespace where possible; falls back to character
+ * boundaries for tokens longer than the line width. Preserves explicit \n
+ * as hard line breaks.
+ */
+function wordWrap(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const lines: string[] = [];
+  for (const paragraph of text.split('\n')) {
+    if (!paragraph) {
+      lines.push('');
+      continue;
+    }
+    const tokens = paragraph.split(/(\s+)/); // keep whitespace separators
+    let current = '';
+    let currentW = 0;
+    for (const token of tokens) {
+      if (!token) continue;
+      const tokenW = displayWidth(token);
+      if (tokenW > width) {
+        // Token longer than a full line — break at character boundaries.
+        if (current) {
+          lines.push(current);
+          current = '';
+          currentW = 0;
+        }
+        for (const ch of token) {
+          const chW = displayWidth(ch);
+          if (currentW + chW > width) {
+            lines.push(current);
+            current = ch;
+            currentW = chW;
+          } else {
+            current += ch;
+            currentW += chW;
+          }
+        }
+      } else if (currentW + tokenW > width) {
+        lines.push(current);
+        // Don't start a new line with leading whitespace.
+        if (/^\s+$/.test(token)) {
+          current = '';
+          currentW = 0;
+        } else {
+          current = token;
+          currentW = tokenW;
+        }
+      } else {
+        current += token;
+        currentW += tokenW;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines.length > 0 ? lines : [''];
+}
+
 function boxLine(content: string, width: number, color: string = FG.cyan): string {
   const dw = displayWidth(content);
   // │ + space + content + padding + │ = width
@@ -129,7 +187,9 @@ function getContextLimit(model: string): number {
 }
 
 export function render(state: SessionState | null, fileEvents: Array<{ path: string; time: Date; event: string }>): void {
-  const W = process.stdout.columns || 80;
+  // Reserve the last column to avoid the terminal "last-column auto-wrap" bug
+  // that pushes right borders off-screen in tmux/iTerm2/SSH sessions.
+  const W = Math.max(20, (process.stdout.columns || 80) - 1);
 
   const lines: string[] = [];
   const now = new Date();
@@ -175,6 +235,27 @@ export function render(state: SessionState | null, fileEvents: Array<{ path: str
     `${FG.yellow}CW:${formatTokens(cacheWrite)}${RESET} ` +
     `${FG.green}CR:${formatTokens(cacheRead)}${RESET}`,
   );
+
+  // --- Last User Prompt ---
+  const promptTitle = state.lastUserPromptTime
+    ? `Last Prompt  ${formatTime(state.lastUserPromptTime)}`
+    : 'Last Prompt';
+  lines.push(boxTop(promptTitle, W, FG.white));
+  if (state.lastUserPrompt) {
+    const MAX_CHARS = 500;
+    // Count true characters (Array.from handles surrogate-pair emoji correctly).
+    const chars = Array.from(state.lastUserPrompt);
+    const displayText = chars.length > MAX_CHARS
+      ? chars.slice(0, MAX_CHARS - 3).join('') + '...'
+      : state.lastUserPrompt;
+    const innerW = Math.max(10, W - 4); // box borders + padding
+    for (const wrapped of wordWrap(displayText, innerW)) {
+      lines.push(boxLine(`${FG.white}${wrapped}${RESET}`, W, FG.white));
+    }
+  } else {
+    lines.push(boxLine(`${DIM}(no user prompt yet)${RESET}`, W, FG.white));
+  }
+  lines.push(boxBottom(W, FG.white));
 
   // --- Tools (compact: wrapped inside box) ---
   const sortedTools = [...state.toolStats.values()].sort((a, b) => b.count - a.count);

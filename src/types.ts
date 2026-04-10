@@ -113,4 +113,8 @@ export interface SessionState {
   sessionTeamNames: Set<string>;
   lastActivity: Date;
   model: string;
+  /** The most recent actual user-typed prompt (excludes tool results, hook output, system reminders) */
+  lastUserPrompt: string | null;
+  /** Timestamp of the last user prompt */
+  lastUserPromptTime: Date | null;
 }
