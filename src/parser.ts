@@ -7,10 +7,11 @@ const CLAUDE_DIR = join(homedir(), '.claude');
 
 /**
  * Convert a CWD path to the Claude project directory name.
- * Claude Code replaces '/' with '-', e.g. /Users/foo/bar → -Users-foo-bar
+ * Claude Code replaces '/' and '_' with '-',
+ * e.g. /Users/foo_bar/baz → -Users-foo-bar-baz
  */
 export function cwdToProjectDirName(cwd: string): string {
-  return cwd.replace(/\//g, '-');
+  return cwd.replace(/[/_]/g, '-');
 }
 
 export function findLatestSession(cwd?: string): SessionState | null {
