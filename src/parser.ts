@@ -13,6 +13,20 @@ export function cwdToProjectDirName(cwd: string): string {
   return cwd.replace(/\//g, '-');
 }
 
+/**
+ * Load a specific session by its cwd + sessionId. Used by the session switcher
+ * to view any of the live sessions discovered via loadActiveSessions.
+ *
+ * Returns null if the transcript file doesn't exist (e.g. session hasn't
+ * written to disk yet, or the sessionId is wrong).
+ */
+export function findSessionByCwdAndId(cwd: string, sessionId: string): SessionState | null {
+  const projectDir = join(CLAUDE_DIR, 'projects', cwdToProjectDirName(cwd));
+  const transcriptFile = join(projectDir, `${sessionId}.jsonl`);
+  if (!existsSync(transcriptFile)) return null;
+  return parseTranscript(sessionId, projectDir, transcriptFile);
+}
+
 export function findLatestSession(cwd?: string): SessionState | null {
   const projectsDir = join(CLAUDE_DIR, 'projects');
   if (!existsSync(projectsDir)) return null;
@@ -77,7 +91,7 @@ export function parseTranscript(
     lastUserPromptTime: null,
     gitBranch: null,
     editedFilesCount: 0,
-    activeSessions: 0,
+    activeSessions: [],
     memory: null,
   };
 
@@ -208,11 +222,18 @@ function loadMemoryInfo(state: SessionState): void {
     const lastModified = topics[0]?.mtime
       ?? (hasIndex ? statSync(indexPath).mtime : null);
 
+    // Top 3 most recently modified topic files (already sorted mtime desc above),
+    // with the .md extension stripped for display.
+    const recentTopics = topics
+      .slice(0, 3)
+      .map((t: { name: string }) => t.name.replace(/\.md$/, ''));
+
     const info: MemoryInfo = {
       hasIndex,
       indexLines,
       topicCount: topics.length,
       categoryBreakdown,
+      recentTopics,
       lastModified,
     };
     state.memory = info;
@@ -224,25 +245,32 @@ function loadMemoryInfo(state: SessionState): void {
 function loadActiveSessions(state: SessionState): void {
   const sessionsDir = join(CLAUDE_DIR, 'sessions');
   if (!existsSync(sessionsDir)) {
-    state.activeSessions = 0;
+    state.activeSessions = [];
     return;
   }
   try {
     const files = readdirSync(sessionsDir).filter((f: string) => f.endsWith('.json'));
-    let alive = 0;
+    const alive: import('./types.js').AvailableSession[] = [];
     for (const f of files) {
       try {
         const data = JSON.parse(readFileSync(join(sessionsDir, f), 'utf-8'));
         if (typeof data.pid === 'number' && isProcessAlive(data.pid)) {
-          alive++;
+          alive.push({
+            pid: data.pid,
+            sessionId: typeof data.sessionId === 'string' ? data.sessionId : '',
+            cwd: typeof data.cwd === 'string' ? data.cwd : '',
+            startedAt: new Date(typeof data.startedAt === 'number' ? data.startedAt : 0),
+          });
         }
       } catch {
         // Skip malformed or unreadable entries
       }
     }
+    // Sort by startedAt descending (newest first) for stable iteration order
+    alive.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
     state.activeSessions = alive;
   } catch {
-    state.activeSessions = 0;
+    state.activeSessions = [];
   }
 }
 

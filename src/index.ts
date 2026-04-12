@@ -11,7 +11,7 @@
 import { watch } from 'chokidar';
 import { homedir } from 'os';
 import { join } from 'path';
-import { findLatestSession, parseTranscript } from './parser.js';
+import { findLatestSession, findSessionByCwdAndId, parseTranscript } from './parser.js';
 import { render, cleanup } from './ui.js';
 import type { SessionState } from './types.js';
 
@@ -33,9 +33,23 @@ function addFileEvent(path: string, event: string): void {
 // State
 let state: SessionState | null = null;
 let running = true;
+/** When the user presses 'n' to switch sessions, this holds the target.
+ *  While set, refreshState() loads this session instead of the default cwd lookup. */
+let selectedSession: { cwd: string; sessionId: string } | null = null;
 
 function refreshState(): void {
   const sessionId = process.argv[2];
+
+  // Priority 1: If the user has switched to a specific session via 'n', keep showing it.
+  if (selectedSession) {
+    const switched = findSessionByCwdAndId(selectedSession.cwd, selectedSession.sessionId);
+    if (switched) {
+      state = switched;
+      return;
+    }
+    // Session disappeared (crashed or cleaned up) — fall back to default lookup
+    selectedSession = null;
+  }
 
   if (sessionId && state) {
     // Refresh existing session
@@ -59,6 +73,34 @@ function refreshState(): void {
     // Find latest session for the current project
     state = findLatestSession(PROJECT_CWD);
   }
+}
+
+/**
+ * Cycle to the next live Claude Code session. Uses the current state's
+ * activeSessions list as the source of truth — this list is refreshed every
+ * 2 seconds, so it reflects newly-started and recently-ended sessions.
+ *
+ * Behavior:
+ * - If no state yet, do nothing.
+ * - If only one session is alive, do nothing (nothing to switch to).
+ * - Otherwise, find the next session in the list after the currently-shown
+ *   one (wrapping at the end) and select it. Pressing 'n' again cycles further.
+ */
+function switchToNextSession(): void {
+  if (!state || state.activeSessions.length < 2) return;
+
+  const currentId = state.sessionId;
+  const idx = state.activeSessions.findIndex(s => s.sessionId === currentId);
+  // If current session isn't in the list (shouldn't happen but defensive),
+  // pick the first entry.
+  const nextIdx = idx === -1 ? 0 : (idx + 1) % state.activeSessions.length;
+  const next = state.activeSessions[nextIdx];
+
+  // Skip self (if wrapping results in same session somehow)
+  if (next.sessionId === currentId) return;
+
+  selectedSession = { cwd: next.cwd, sessionId: next.sessionId };
+  refreshState();
 }
 
 // Setup file watcher
@@ -98,8 +140,14 @@ if (process.stdin.isTTY) {
       process.exit(0);
     }
     if (key === 'r') {
+      // 'r' also clears any switched-session override, returning to the CWD-default view
+      selectedSession = null;
       refreshState();
-      render(state, fileEvents);
+      render(state, fileEvents, selectedSession !== null);
+    }
+    if (key === 'n') {
+      switchToNextSession();
+      render(state, fileEvents, selectedSession !== null);
     }
   });
 }
@@ -122,12 +170,12 @@ process.on('SIGTERM', () => {
 // Main loop — recursive setTimeout is more reliable than setInterval in Bun
 console.log('Starting Claude Code Monitor...');
 refreshState();
-render(state, fileEvents);
+render(state, fileEvents, selectedSession !== null);
 
 function tick(): void {
   if (!running) return;
   refreshState();
-  render(state, fileEvents);
+  render(state, fileEvents, selectedSession !== null);
   setTimeout(tick, REFRESH_INTERVAL);
 }
 setTimeout(tick, REFRESH_INTERVAL);

@@ -186,7 +186,11 @@ function getContextLimit(model: string): number {
   return 200_000;
 }
 
-export function render(state: SessionState | null, fileEvents: Array<{ path: string; time: Date; event: string }>): void {
+export function render(
+  state: SessionState | null,
+  fileEvents: Array<{ path: string; time: Date; event: string }>,
+  isSwitchedView: boolean = false,
+): void {
   // Reserve the last column to avoid the terminal "last-column auto-wrap" bug
   // that pushes right borders off-screen in tmux/iTerm2/SSH sessions.
   const W = Math.max(20, (process.stdout.columns || 80) - 1);
@@ -223,13 +227,23 @@ export function render(state: SessionState | null, fileEvents: Array<{ path: str
   const ctxLimit = getContextLimit(state.model);
   const ctxPct = state.contextTokens > 0 ? Math.round((state.contextTokens / ctxLimit) * 100) : 0;
   const ctxColor = ctxPct >= 85 ? FG.red : ctxPct >= 70 ? FG.yellow : FG.green;
+  // Active sessions: total count + other project basenames (excluding current session)
+  const sessionsTotal = state.activeSessions.length;
+  const otherProjects = state.activeSessions
+    .filter(s => s.sessionId !== state.sessionId && s.cwd)
+    .map(s => s.cwd.split('/').pop() || '')
+    .filter(Boolean);
+  // Show up to 2 other project names — more would crowd the line on narrow terminals
+  const otherProjectsDisplay = otherProjects.length > 0
+    ? ` ${DIM}(+${otherProjects.slice(0, 2).join(', ')}${otherProjects.length > 2 ? `, +${otherProjects.length - 2}` : ''})${RESET}`
+    : '';
   lines.push(
     `${DIM} Session:${RESET}${FG.cyan}${state.sessionId.slice(0, 8)}${RESET}` +
     `${DIM} Model:${RESET}${FG.green}${state.model}${RESET}` +
     `${DIM} Ctx:${RESET}${ctxColor}${ctxPct}%${RESET}` +
     `${DIM} Age:${RESET}${sessionAge}` +
     `${DIM} Idle:${RESET}${sinceActivity}` +
-    `${DIM} Sess:${RESET}${FG.cyan}${state.activeSessions}${RESET}`,
+    `${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}`,
   );
   const { input, output, cacheWrite, cacheRead } = state.tokenUsage;
   lines.push(
@@ -412,6 +426,11 @@ export function render(state: SessionState | null, fileEvents: Array<{ path: str
         .join(' ');
       lines.push(boxLine(`${DIM}  categories:${RESET} ${cats}`, W, FG.blue));
     }
+    // Line 3 (optional): most recently modified topic names
+    if (m.recentTopics.length > 0) {
+      const topics = m.recentTopics.map(t => `${FG.cyan}${t}${RESET}`).join(`${DIM}, ${RESET}`);
+      lines.push(boxLine(`${DIM}  recent:${RESET} ${topics}`, W, FG.blue));
+    }
   }
   lines.push(boxBottom(W, FG.blue));
 
@@ -432,8 +451,16 @@ export function render(state: SessionState | null, fileEvents: Array<{ path: str
   lines.push(boxBottom(W, FG.gray));
 
   // Footer
+  // Footer — key hints, with 'n:next' only shown when multiple sessions are alive
+  const canSwitch = state && state.activeSessions.length > 1;
+  const nextHint = canSwitch
+    ? ` ${BOLD}n${RESET}${DIM}:next session${RESET}`
+    : '';
+  const switchedBadge = isSwitchedView
+    ? ` ${BG.blue}${FG.white}${BOLD} VIEWING ${RESET}${FG.yellow} press ${BOLD}r${RESET}${FG.yellow} to return${RESET}`
+    : '';
   lines.push(
-    `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh | auto 2s${RESET}`,
+    `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh${RESET}${nextHint}${DIM} | auto 2s${RESET}${switchedBadge}`,
   );
 
   process.stdout.write(CLEAR + HIDE_CURSOR + lines.join('\n') + '\n');

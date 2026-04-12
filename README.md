@@ -11,8 +11,8 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ```
  Claude Code Monitor                                                  17:18:00    [cyan bg, bold]
  /Users/you/workspace/my-project [main]                                            [dim gray + magenta]
- Session:a1b2c3d4 Model:claude-opus-4-6 Ctx:18% Age:12m 30s Idle:2s
- Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K
+ Session:a1b2c3d4 Model:claude-opus-4-6 Ctx:18% Age:12m 30s Idle:2s Sess:3 (+api, docs)
+ Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
 ┌─ Last Prompt  17:17:45 ─────────────────────────────────────────────────────┐
 │ add a feature to show git branch next to the current path, and adjust the   │
 │ title bar color to be more readable                                         │
@@ -40,20 +40,29 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ ● Write migration tests                                                     │
 │ ○ Update API docs                                                           │
 └─────────────────────────────────────────────────────────────────────────────┘
+┌─ Memory ────────────────────────────────────────────────────────────────────┐
+│ MEMORY.md (127 lines) + 9 topics last: 2h 15m ago                           │
+│   categories: feedback:5 project:3 user:1                                   │
+│   recent: user_profile, feedback_naming, project_codex_model                │
+└─────────────────────────────────────────────────────────────────────────────┘
 ┌─ File Activity ─────────────────────────────────────────────────────────────┐
 │ change 17:18:02  ~/.claude/projects/-Users-you-workspace/abc123.jsonl       │
 │ add    17:17:58  ~/.claude/tasks/abc123/task-42.json                        │
 └─────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh | auto 2s
+ q:quit r:refresh n:next session | auto 2s
 ```
 
 ### Visual highlights
 
 - **Title bar** — cyan background with bold black text; matches the app's primary accent color and stays legible in both light and dark terminal themes.
 - **Path line** — dim gray cwd followed by the current git branch in magenta brackets (e.g. `[main]`), read directly from `.git/HEAD` with zero `git` subprocess overhead.
+- **Session counter** — `Sess:N` shows how many Claude Code processes are alive across all terminals; the `(+project, project)` hint lists up to two other active project basenames so you know what else is running.
+- **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap.
+- **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
 - **Context indicator** — `Ctx:18%` turns yellow at 70% and red at 85% so you notice context exhaustion before it bites.
 - **Subagent status** — `●` (running, yellow), `✔` (completed, green), `✘` (error, red); completed-count summary appears in the box title when there are finished agents.
+- **Session switcher** — press `n` to cycle through other live Claude Code sessions across all projects. A `VIEWING` badge in the footer reminds you that you're watching a switched session; press `r` to return to the default view for your current cwd.
 
 ## Requirements
 
@@ -112,7 +121,8 @@ bun run start <sessionId>
 
 ### Keyboard
 
-- `r` — force refresh
+- `r` — force refresh (also clears any switched-session view)
+- `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
 - `q` / `Ctrl+C` — quit
 
 ### Build standalone binary
@@ -131,6 +141,7 @@ bun run build    # outputs dist/ccmonitor
 | **Skill** | Active skill with elapsed time, last completed skill, history |
 | **Teams** | Team names and member lists |
 | **Tasks** | Task subjects with status icons |
+| **Memory** | Auto-memory state: MEMORY.md size, topic count, category breakdown, recent topics |
 | **File Activity** | Recent file add/change/unlink events from `~/.claude/` |
 
 ## Faster Skill Detection (Optional)
@@ -250,6 +261,33 @@ Read from the `message.model` field on assistant transcript entries. Updated on 
 #### Git Branch
 
 Parsed directly from `<cwd>/.git/HEAD` every refresh cycle. Handles both normal refs (`ref: refs/heads/<branch>`) and detached HEAD (raw SHA, shown as a 7-character short form). Returns `null` for non-git directories. This bypasses `git` subprocess spawning entirely — at a 2-second refresh interval, the fork overhead of `git branch --show-current` would be measurable, whereas reading a ~40-byte file is effectively free.
+
+#### Files Edited Counter
+
+Counted from `~/.claude/file-history/<sessionId>/`, the directory where Claude Code stores pre-edit backups for the Undo feature. Each file appears as `<hash>@v<N>` where the hash identifies a sanitized file path and `N` is the edit version. The counter strips the `@v<N>` suffix and deduplicates by hash, so a file edited 5 times counts once — the metric represents "how many distinct files were touched," not "how many total edits."
+
+#### Active Sessions
+
+Populated from `~/.claude/sessions/<pid>.json`, a registry of every running Claude Code process. Each entry contains `{pid, sessionId, cwd, startedAt, kind, entrypoint}`. The monitor:
+
+1. Reads every `*.json` file in the sessions directory.
+2. For each entry, sends signal 0 (`process.kill(pid, 0)`) to verify the process is actually alive — this is a zero-cost liveness check that doesn't affect the target process.
+3. Discards stale entries from crashed or SIGKILL'd processes (the OS doesn't clean these up automatically).
+4. Sorts surviving entries by `startedAt` descending so the `n` key cycles through them in a predictable order.
+
+The surviving list is exposed as `state.activeSessions`, used both for the `Sess:N (+project, project)` header badge and as the source of truth for the `n` session switcher.
+
+#### Memory
+
+Read from `~/.claude/projects/<sanitized-cwd>/memory/`, the auto-memory directory Claude Code maintains per project. The parser:
+
+1. Checks for `MEMORY.md` (the index file) and counts its lines.
+2. Lists top-level `.md` files excluding `MEMORY.md` and `MEMORY.md.bak` — these are the topic files.
+3. Groups topics by filename prefix (the token before the first underscore), so `feedback_naming.md`, `feedback_conv_format.md`, and `feedback_review.md` all contribute to the `feedback` category count.
+4. Sorts topics by mtime descending and keeps the top 3 names for the "recent" line.
+5. Skips subdirectories (`team/`, `logs/`) since they have different semantics.
+
+The breakdown line trades vertical space for information density: a 9-topic memory compresses to one line like `feedback:5 project:3 user:1`, preserving the distribution without consuming the whole panel.
 
 #### File Activity
 

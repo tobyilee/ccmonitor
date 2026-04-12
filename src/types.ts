@@ -81,6 +81,13 @@ export interface SkillInfo {
   lastUsed: Date;
 }
 
+export interface AvailableSession {
+  pid: number;
+  sessionId: string;
+  cwd: string;
+  startedAt: Date;
+}
+
 export interface MemoryInfo {
   /** Whether MEMORY.md (the index file) exists. */
   hasIndex: boolean;
@@ -90,6 +97,8 @@ export interface MemoryInfo {
   topicCount: number;
   /** Count of topic files grouped by prefix (e.g. { feedback: 4, project: 3, user: 1 }). */
   categoryBreakdown: Record<string, number>;
+  /** Top 3 most recently modified topic file names (without .md extension). */
+  recentTopics: string[];
   /** Most recent modification across all memory files, or null if none. */
   lastModified: Date | null;
 }
@@ -134,8 +143,8 @@ export interface SessionState {
   gitBranch: string | null;
   /** Count of unique files edited in this session (derived from ~/.claude/file-history/<sessionId>/). */
   editedFilesCount: number;
-  /** Number of currently-alive Claude Code processes (from ~/.claude/sessions/<pid>.json with PID liveness check). */
-  activeSessions: number;
+  /** All currently-alive Claude Code sessions (including this one), from ~/.claude/sessions/<pid>.json with PID liveness check. */
+  activeSessions: AvailableSession[];
   /** Auto-memory info for this project (from projects/<cwd>/memory/). Null if no memory directory exists. */
   memory: MemoryInfo | null;
 }
