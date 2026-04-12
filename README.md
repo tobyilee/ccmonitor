@@ -11,7 +11,8 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ```
  Claude Code Monitor                                                  17:18:00    [cyan bg, bold]
  /Users/you/workspace/my-project [main]                                            [dim gray + magenta]
- Session:a1b2c3d4 Model:claude-opus-4-6 Ctx:18% Age:12m 30s Idle:2s Sess:3 (+api, docs)
+ Session:a1b2c3d4 Model:claude-opus-4-6 Ctx:18% Age:12m 30s Idle:2s
+ Sess:3 (+api, docs)
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
 ┌─ Last Prompt  17:17:45 ─────────────────────────────────────────────────────┐
 │ add a feature to show git branch next to the current path, and adjust the   │

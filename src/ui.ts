@@ -227,22 +227,25 @@ export function render(
   const ctxLimit = getContextLimit(state.model);
   const ctxPct = state.contextTokens > 0 ? Math.round((state.contextTokens / ctxLimit) * 100) : 0;
   const ctxColor = ctxPct >= 85 ? FG.red : ctxPct >= 70 ? FG.yellow : FG.green;
-  // Active sessions: total count + other project basenames (excluding current session)
-  const sessionsTotal = state.activeSessions.length;
-  const otherProjects = state.activeSessions
-    .filter(s => s.sessionId !== state.sessionId && s.cwd)
-    .map(s => s.cwd.split('/').pop() || '')
-    .filter(Boolean);
-  // Show up to 2 other project names — more would crowd the line on narrow terminals
-  const otherProjectsDisplay = otherProjects.length > 0
-    ? ` ${DIM}(+${otherProjects.slice(0, 2).join(', ')}${otherProjects.length > 2 ? `, +${otherProjects.length - 2}` : ''})${RESET}`
-    : '';
   lines.push(
     `${DIM} Session:${RESET}${FG.cyan}${state.sessionId.slice(0, 8)}${RESET}` +
     `${DIM} Model:${RESET}${FG.green}${state.model}${RESET}` +
     `${DIM} Ctx:${RESET}${ctxColor}${ctxPct}%${RESET}` +
     `${DIM} Age:${RESET}${sessionAge}` +
-    `${DIM} Idle:${RESET}${sinceActivity}` +
+    `${DIM} Idle:${RESET}${sinceActivity}`,
+  );
+  // Active sessions on its own line — total count + other project basenames
+  // (dedicated line means we can show more project names without crowding)
+  const sessionsTotal = state.activeSessions.length;
+  const otherProjects = state.activeSessions
+    .filter(s => s.sessionId !== state.sessionId && s.cwd)
+    .map(s => s.cwd.split('/').pop() || '')
+    .filter(Boolean);
+  const MAX_PROJECTS_SHOWN = 4;
+  const otherProjectsDisplay = otherProjects.length > 0
+    ? ` ${DIM}(+${otherProjects.slice(0, MAX_PROJECTS_SHOWN).join(', ')}${otherProjects.length > MAX_PROJECTS_SHOWN ? `, +${otherProjects.length - MAX_PROJECTS_SHOWN}` : ''})${RESET}`
+    : '';
+  lines.push(
     `${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}`,
   );
   const { input, output, cacheWrite, cacheRead } = state.tokenUsage;
