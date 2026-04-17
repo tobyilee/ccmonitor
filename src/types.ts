@@ -147,4 +147,8 @@ export interface SessionState {
   activeSessions: AvailableSession[];
   /** Auto-memory info for this project (from projects/<cwd>/memory/). Null if no memory directory exists. */
   memory: MemoryInfo | null;
+  /** Current Claude Code reasoning effort level (e.g. "low", "medium", "high", "xhigh").
+   *  Resolved from the settings cascade: project .claude/settings.local.json → project .claude/settings.json → ~/.claude/settings.json.
+   *  Null if no setting is found in any layer. */
+  effortLevel: string | null;
 }

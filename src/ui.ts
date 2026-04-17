@@ -239,9 +239,27 @@ export function render(
   const ctxLimit = getContextLimit(state.model);
   const ctxPct = state.contextTokens > 0 ? Math.round((state.contextTokens / ctxLimit) * 100) : 0;
   const ctxColor = ctxPct >= 85 ? FG.red : ctxPct >= 70 ? FG.yellow : FG.green;
+  // Effort level color-codes intensity so it's legible at a glance:
+  // xhigh = magenta (most distinctive), high = red, medium = yellow, low = gray.
+  const effortColor = (() => {
+    switch (state.effortLevel) {
+      case 'xhigh': return FG.magenta;
+      case 'high': return FG.red;
+      case 'medium': return FG.yellow;
+      case 'low': return FG.gray;
+      default: return FG.cyan;
+    }
+  })();
+  // `/effort max` accepts "max" as input but Claude Code persists it as "xhigh".
+  // Show the user-facing label so the monitor matches what the user typed.
+  const effortLabel = state.effortLevel === 'xhigh' ? 'max' : state.effortLevel;
+  const effortPart = state.effortLevel
+    ? `${DIM} Effort:${RESET}${effortColor}${effortLabel}${RESET}`
+    : '';
   lines.push(
     `${DIM} Session:${RESET}${FG.cyan}${state.sessionId.slice(0, 8)}${RESET}` +
     `${DIM} Model:${RESET}${FG.green}${state.model}${RESET}` +
+    effortPart +
     `${DIM} Ctx:${RESET}${ctxColor}${ctxPct}%${RESET}` +
     `${DIM} Age:${RESET}${sessionAge}` +
     `${DIM} Idle:${RESET}${sinceActivity}`,

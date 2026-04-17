@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.0.0**
+**Version: 1.1.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -13,7 +13,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ```
  Claude Code Monitor                                                  17:18:00    [#1e3a8a bg, #ffffff bold]
  /Users/you/workspace/my-project [main]                                            [dim gray + magenta]
- Session:a1b2c3d4 Model:claude-opus-4-6 Ctx:18% Age:12m 30s Idle:2s
+ Session:a1b2c3d4 Model:claude-opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
  Sess:3 (+api, docs)
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
 ┌─ Last Prompt  17:17:45 ─────────────────────────────────────────────────────┐
@@ -63,6 +63,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
+- **Reasoning effort** — `Effort:max` shows the current Claude Code reasoning level color-coded by intensity (max=magenta, high=red, medium=yellow, low=gray). Read from the same settings cascade Claude Code uses (project `.claude/settings.local.json` → project `.claude/settings.json` → user `~/.claude/settings.json`), so the value always matches the live session. The persisted internal value `xhigh` is displayed as `max` to match what `/effort max` accepts as input.
 - **Context indicator** — `Ctx:18%` turns yellow at 70% and red at 85% so you notice context exhaustion before it bites.
 - **Subagent status** — `●` (running, yellow), `✔` (completed, green), `✘` (error, red); completed-count summary appears in the box title when there are finished agents.
 - **Session switcher** — press `n` to cycle through other live Claude Code sessions across all projects. A high-contrast yellow `VIEWING` badge in the footer reminds you that you're watching a switched session; press `r` to return to the default view for your current cwd.

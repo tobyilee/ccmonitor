@@ -94,6 +94,7 @@ export function parseTranscript(
     editedFilesCount: 0,
     activeSessions: [],
     memory: null,
+    effortLevel: null,
   };
 
   if (!existsSync(transcriptFile)) return state;
@@ -133,8 +134,41 @@ export function parseTranscript(
   loadActiveSessions(state);
   // Read auto-memory state for this project
   loadMemoryInfo(state);
+  // Read current reasoning effort level from the settings cascade
+  state.effortLevel = loadEffortLevel(projectDirToRealCwd(projectDir));
 
   return state;
+}
+
+/**
+ * Resolve the current Claude Code reasoning effort setting. Claude Code loads
+ * settings in this precedence (most-specific wins):
+ *   1. <cwd>/.claude/settings.local.json
+ *   2. <cwd>/.claude/settings.json
+ *   3. ~/.claude/settings.json
+ *
+ * We walk the same order and return the first `effortLevel` we find. This
+ * mirrors what the live session is actually using so the monitor never
+ * disagrees with reality when a project overrides the global default.
+ */
+function loadEffortLevel(cwdPath: string): string | null {
+  const candidates = [
+    join(cwdPath, '.claude', 'settings.local.json'),
+    join(cwdPath, '.claude', 'settings.json'),
+    join(CLAUDE_DIR, 'settings.json'),
+  ];
+  for (const p of candidates) {
+    if (!existsSync(p)) continue;
+    try {
+      const data = JSON.parse(readFileSync(p, 'utf-8'));
+      if (typeof data.effortLevel === 'string' && data.effortLevel) {
+        return data.effortLevel;
+      }
+    } catch {
+      // Skip malformed JSON and continue the cascade
+    }
+  }
+  return null;
 }
 
 /**
