@@ -121,6 +121,9 @@ bun run dev
 
 # Monitor a specific session by ID
 bun run start <sessionId>
+
+# Print the installed version and exit
+ccmonitor --version    # or: ccmonitor -v
 ```
 
 ### Keyboard

@@ -14,10 +14,19 @@ import { join } from 'path';
 import { findLatestSession, findSessionByCwdAndId, parseTranscript } from './parser.js';
 import { render, cleanup } from './ui.js';
 import type { SessionState } from './types.js';
+import pkg from '../package.json' with { type: 'json' };
 
 const CLAUDE_DIR = join(homedir(), '.claude');
 const REFRESH_INTERVAL = 2000;
 const PROJECT_CWD = process.cwd();
+
+// Handle --version / -v flag before any other startup work so the binary exits
+// cleanly without touching the filesystem or spawning watchers.
+const firstArg = process.argv[2];
+if (firstArg === '--version' || firstArg === '-v') {
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 // File events ring buffer
 const MAX_FILE_EVENTS = 50;
