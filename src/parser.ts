@@ -818,29 +818,78 @@ function loadSkillHookState(state: SessionState): void {
 }
 
 /**
- * Read account-level rate limit data from abtop's StatusLine hook output.
+ * Read account-level rate limit data. Tries two sources in order:
  *
- * abtop writes to ~/.claude/abtop-rate-limits.json with this shape:
- * { source, five_hour: { used_percentage, resets_at }, seven_day: { used_percentage, resets_at }, updated_at }
+ * 1. abtop — ~/.claude/abtop-rate-limits.json (StatusLine hook output)
+ * 2. OMC  — ~/.claude/plugins/oh-my-claudecode/.usage-cache.json (OAuth API cache)
  *
- * Data older than 10 minutes is marked as stale.
+ * Data older than 15 minutes is marked as stale.
  */
 function loadRateLimit(): RateLimitInfo | null {
+  return loadRateLimitFromAbtop() ?? loadRateLimitFromOmc();
+}
+
+/** abtop source: ~/.claude/abtop-rate-limits.json */
+function loadRateLimitFromAbtop(): RateLimitInfo | null {
   const filePath = join(CLAUDE_DIR, 'abtop-rate-limits.json');
   if (!existsSync(filePath)) return null;
 
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
-    const nowSec = Math.floor(Date.now() / 1000);
-    const updatedAt = typeof data.updated_at === 'number' ? data.updated_at : null;
-    const isStale = updatedAt !== null ? (nowSec - updatedAt) > 600 : true;
+    const nowMs = Date.now();
+    const updatedAt = typeof data.updated_at === 'number' ? data.updated_at * 1000 : null;
+    const isStale = updatedAt !== null ? (nowMs - updatedAt) > 900_000 : true;
 
     return {
-      source: data.source || 'claude',
+      source: 'abtop',
       fiveHourPct: data.five_hour?.used_percentage ?? null,
       fiveHourResetsAt: data.five_hour?.resets_at ?? null,
-      sevenDayPct: data.seven_day?.used_percentage ?? null,
-      sevenDayResetsAt: data.seven_day?.resets_at ?? null,
+      weeklyPct: data.seven_day?.used_percentage ?? null,
+      weeklyResetsAt: data.seven_day?.resets_at ?? null,
+      sonnetWeeklyPct: null,
+      opusWeeklyPct: null,
+      updatedAt,
+      isStale,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * OMC source: ~/.claude/plugins/oh-my-claudecode/.usage-cache.json
+ *
+ * Shape: { timestamp, data: { fiveHourPercent, weeklyPercent, fiveHourResetsAt,
+ *          weeklyResetsAt, sonnetWeeklyPercent?, opusWeeklyPercent? }, source }
+ */
+function loadRateLimitFromOmc(): RateLimitInfo | null {
+  const filePath = join(CLAUDE_DIR, 'plugins', 'oh-my-claudecode', '.usage-cache.json');
+  if (!existsSync(filePath)) return null;
+
+  try {
+    const raw = JSON.parse(readFileSync(filePath, 'utf-8'));
+    const data = raw.data;
+    if (!data) return null;
+
+    const nowMs = Date.now();
+    const updatedAt = typeof raw.timestamp === 'number' ? raw.timestamp : null;
+    const isStale = updatedAt !== null ? (nowMs - updatedAt) > 900_000 : true;
+
+    // Convert ISO date strings to epoch seconds for reset times
+    const toEpochSec = (v: unknown): number | null => {
+      if (!v) return null;
+      const ms = new Date(String(v)).getTime();
+      return isNaN(ms) ? null : Math.floor(ms / 1000);
+    };
+
+    return {
+      source: 'omc',
+      fiveHourPct: typeof data.fiveHourPercent === 'number' ? data.fiveHourPercent : null,
+      fiveHourResetsAt: toEpochSec(data.fiveHourResetsAt),
+      weeklyPct: typeof data.weeklyPercent === 'number' ? data.weeklyPercent : null,
+      weeklyResetsAt: toEpochSec(data.weeklyResetsAt),
+      sonnetWeeklyPct: typeof data.sonnetWeeklyPercent === 'number' ? data.sonnetWeeklyPercent : null,
+      opusWeeklyPct: typeof data.opusWeeklyPercent === 'number' ? data.opusWeeklyPercent : null,
       updatedAt,
       isStale,
     };

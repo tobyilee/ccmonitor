@@ -104,19 +104,23 @@ export interface MemoryInfo {
 }
 
 export interface RateLimitInfo {
-  /** "claude" or "codex" */
+  /** Data source: "abtop" or "omc" */
   source: string;
   /** 5-hour window usage percentage (0-100), or null if unavailable */
   fiveHourPct: number | null;
-  /** Epoch seconds when the 5-hour window resets */
+  /** When the 5-hour window resets (epoch seconds for abtop, ISO string date for OMC) */
   fiveHourResetsAt: number | null;
-  /** 7-day window usage percentage (0-100), or null if unavailable */
-  sevenDayPct: number | null;
-  /** Epoch seconds when the 7-day window resets */
-  sevenDayResetsAt: number | null;
-  /** Epoch seconds when this data was last collected */
+  /** Weekly (7-day) usage percentage (0-100), or null if unavailable */
+  weeklyPct: number | null;
+  /** When the weekly window resets (epoch seconds for abtop, ISO string date for OMC) */
+  weeklyResetsAt: number | null;
+  /** Per-model Sonnet weekly percentage (OMC only) */
+  sonnetWeeklyPct: number | null;
+  /** Per-model Opus weekly percentage (OMC only) */
+  opusWeeklyPct: number | null;
+  /** Epoch milliseconds when this data was last collected */
   updatedAt: number | null;
-  /** Whether the data is stale (>10 minutes old) */
+  /** Whether the data is stale (>15 minutes old) */
   isStale: boolean;
 }
 

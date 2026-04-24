@@ -329,12 +329,12 @@ export function render(
     const rl = state.rateLimit;
     const staleTag = rl.isStale ? ` ${FG.gray}(stale)${RESET}` : '';
     const fiveColor = (rl.fiveHourPct ?? 0) >= 80 ? FG.red : (rl.fiveHourPct ?? 0) >= 50 ? FG.yellow : FG.green;
-    const sevenColor = (rl.sevenDayPct ?? 0) >= 80 ? FG.red : (rl.sevenDayPct ?? 0) >= 50 ? FG.yellow : FG.green;
+    const weekColor = (rl.weeklyPct ?? 0) >= 80 ? FG.red : (rl.weeklyPct ?? 0) >= 50 ? FG.yellow : FG.green;
     const fiveReset = rl.fiveHourResetsAt
       ? ` ${DIM}(${formatDuration((rl.fiveHourResetsAt * 1000) - Date.now())})${RESET}`
       : '';
-    const sevenReset = rl.sevenDayResetsAt
-      ? ` ${DIM}(${formatDuration((rl.sevenDayResetsAt * 1000) - Date.now())})${RESET}`
+    const weekReset = rl.weeklyResetsAt
+      ? ` ${DIM}(${formatDuration((rl.weeklyResetsAt * 1000) - Date.now())})${RESET}`
       : '';
     // Inline bar: ████░░░░░░ style, 10 chars wide
     const bar = (pct: number, color: string): string => {
@@ -343,10 +343,10 @@ export function render(
       return `${color}${'█'.repeat(filled)}${FG.gray}${'░'.repeat(empty)}${RESET}`;
     };
     const fivePct = rl.fiveHourPct ?? 0;
-    const sevenPct = rl.sevenDayPct ?? 0;
+    const weekPct = rl.weeklyPct ?? 0;
     lines.push(
       `${DIM} Quota 5h:${RESET}${bar(fivePct, fiveColor)} ${fiveColor}${fivePct.toFixed(0)}%${RESET}${fiveReset}` +
-      `${DIM} 7d:${RESET}${bar(sevenPct, sevenColor)} ${sevenColor}${sevenPct.toFixed(0)}%${RESET}${sevenReset}${staleTag}`,
+      `${DIM} wk:${RESET}${bar(weekPct, weekColor)} ${weekColor}${weekPct.toFixed(0)}%${RESET}${weekReset}${staleTag}`,
     );
   }
 
