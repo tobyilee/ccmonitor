@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-24
+
+### Added
+- **Token analytics row** — new dashboard line showing burn rate (tokens/min), compaction count (detected via >30% context token drops between turns), peak context tokens, and a braille sparkline of per-turn token usage.
+- **Rate limit quota bars** — reads `~/.claude/abtop-rate-limits.json` (written by abtop's StatusLine hook) and renders inline 5-hour and 7-day usage bars with color thresholds (green <50%, yellow 50-80%, red 80%+), reset countdowns, and a stale-data indicator.
+- **Tool execution durations** — pairs `tool_use` → `tool_result` timestamps in the transcript to compute average and max execution time per tool, shown as `~Ns` suffixes in the Tools panel.
+- **Process monitoring panel** — reads RSS memory and child processes for the Claude Code session PID via `ps` (using `execFileSync` with no shell for safety). Shows `Mem:NMB` in the session header and a collapsible Processes box listing up to 5 children sorted by memory.
+
+### Changed
+- `SessionState` expanded with `contextWindow`, `contextPercent`, `compactionCount`, `maxContextTokens`, `tokenHistory`, `tokenBurnRate`, `rateLimit`, `toolDurations`, `processMemMb`, and `childProcesses` fields.
+- New types: `RateLimitInfo`, `ToolDuration`, `ChildProcess`.
+
 ## [1.2.0] - 2026-04-17
 
 ### Fixed

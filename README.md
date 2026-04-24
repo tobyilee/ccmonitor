@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.2.0**
+**Version: 1.3.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -16,12 +16,14 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
  Session:a1b2c3d4 Model:claude-opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
  Sess:3 (+api, docs)
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
+ Rate:8.2K/min Compact:1 Peak:245.3K ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
+ Quota 5h:████░░░░░░ 42% (2h 15m) 7d:██░░░░░░░░ 18% (5d 3h)
 ┌─ Last Prompt  17:17:45 ─────────────────────────────────────────────────────┐
 │ add a feature to show git branch next to the current path, and adjust the   │
 │ title bar color to be more readable                                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Tools ─────────────────────────────────────────────────────────────────────┐
-│ Edit:15 Bash:12 Read:8 Grep:5 Agent:3 Skill:2 Write:1                       │
+│ Edit:15 ~1s Bash:12 ~2s Read:8 ~0s Grep:5 ~0s Agent:3 ~42s Skill:2 Write:1  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Subagents ─────────────────────────────────────────────────────────────────┐
 │ ● Explore        1m 22s  Find auth middleware files                         │
@@ -64,6 +66,10 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
 - **Reasoning effort** — `Effort:max` shows the current Claude Code reasoning level color-coded by intensity (max=magenta, high=red, medium=yellow, low=gray). Read from the same settings cascade Claude Code uses (project `.claude/settings.local.json` → project `.claude/settings.json` → user `~/.claude/settings.json`), so the value always matches the live session. The persisted internal value `xhigh` is displayed as `max` to match what `/effort max` accepts as input.
+- **Token analytics** — `Rate:8.2K/min` shows average token burn rate, `Compact:1` counts detected context compactions (>30% token drops), `Peak:245.3K` tracks the high-water mark, and a braille sparkline visualizes per-turn token volume.
+- **Rate limit quota** — inline 10-char usage bars for the 5-hour and 7-day API quota windows (sourced from `~/.claude/abtop-rate-limits.json`). Color-coded green/yellow/red with reset countdowns. Marked `(stale)` when data is >10 minutes old.
+- **Tool durations** — each tool in the Tools panel shows its average execution time as a `~Ns` suffix (e.g. `Bash:12 ~2s`), computed by pairing `tool_use` → `tool_result` timestamps in the transcript.
+- **Process memory** — `Mem:NMB` in the session header shows the Claude Code process RSS. A collapsible Processes panel lists child processes sorted by memory usage.
 - **Context indicator** — `Ctx:18%` turns yellow at 70% and red at 85% so you notice context exhaustion before it bites.
 - **Subagent status** — `●` (running, yellow), `✔` (completed, green), `✘` (error, red); completed-count summary appears in the box title when there are finished agents.
 - **Session switcher** — press `n` to cycle through other live Claude Code sessions across all projects. A high-contrast yellow `VIEWING` badge in the footer reminds you that you're watching a switched session; press `r` to return to the default view for your current cwd.
@@ -146,6 +152,7 @@ bun run build    # outputs dist/ccmonitor
 | **Teams** | Team names and member lists |
 | **Tasks** | Task subjects with status icons |
 | **Memory** | Auto-memory state: MEMORY.md size, topic count, category breakdown, recent topics |
+| **Processes** | Child processes of the Claude Code session (PID, RSS memory, command) — only shown when non-empty |
 | **File Activity** | Recent file add/change/unlink events from `~/.claude/` |
 
 ## Faster Skill Detection (Optional)
