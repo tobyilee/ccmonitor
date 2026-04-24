@@ -324,18 +324,21 @@ export function render(
     spark,
   );
 
-  // --- Rate Limit Quota (from abtop) ---
+  // --- Rate Limit Quota (from abtop or OMC) ---
   if (state.rateLimit) {
     const rl = state.rateLimit;
     const staleTag = rl.isStale ? ` ${FG.gray}(stale)${RESET}` : '';
     const fiveColor = (rl.fiveHourPct ?? 0) >= 80 ? FG.red : (rl.fiveHourPct ?? 0) >= 50 ? FG.yellow : FG.green;
     const weekColor = (rl.weeklyPct ?? 0) >= 80 ? FG.red : (rl.weeklyPct ?? 0) >= 50 ? FG.yellow : FG.green;
-    const fiveReset = rl.fiveHourResetsAt
-      ? ` ${DIM}(${formatDuration((rl.fiveHourResetsAt * 1000) - Date.now())})${RESET}`
-      : '';
-    const weekReset = rl.weeklyResetsAt
-      ? ` ${DIM}(${formatDuration((rl.weeklyResetsAt * 1000) - Date.now())})${RESET}`
-      : '';
+    // Only show reset countdown when the reset time is in the future
+    const resetCountdown = (epochSec: number | null): string => {
+      if (!epochSec) return '';
+      const remainMs = (epochSec * 1000) - Date.now();
+      if (remainMs <= 0) return '';
+      return ` ${DIM}(${formatDuration(remainMs)})${RESET}`;
+    };
+    const fiveReset = resetCountdown(rl.fiveHourResetsAt);
+    const weekReset = resetCountdown(rl.weeklyResetsAt);
     // Inline bar: ████░░░░░░ style, 10 chars wide
     const bar = (pct: number, color: string): string => {
       const filled = Math.round(pct / 10);

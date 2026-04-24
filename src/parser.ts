@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
@@ -817,19 +817,137 @@ function loadSkillHookState(state: SessionState): void {
   } catch { /* skip */ }
 }
 
+/** Local cache path for rate limit data fetched directly from the Anthropic API. */
+const RATE_LIMIT_CACHE = join(CLAUDE_DIR, 'ccmonitor-usage-cache.json');
+/** Cache TTL: 5 minutes. Avoids hitting the API on every 2-second refresh. */
+const RATE_LIMIT_CACHE_TTL = 5 * 60 * 1000;
+
 /**
- * Read account-level rate limit data. Tries two sources in order:
+ * Read account-level rate limit data by calling the Anthropic OAuth usage API
+ * directly. OAuth credentials are read from macOS Keychain. Results are cached
+ * locally for 5 minutes to avoid API spam on the 2-second refresh cycle.
  *
- * 1. abtop — ~/.claude/abtop-rate-limits.json (StatusLine hook output)
- * 2. OMC  — ~/.claude/plugins/oh-my-claudecode/.usage-cache.json (OAuth API cache)
- *
- * Data older than 15 minutes is marked as stale.
+ * Falls back to abtop's file if the Keychain approach fails (e.g. on Linux).
  */
 function loadRateLimit(): RateLimitInfo | null {
-  return loadRateLimitFromAbtop() ?? loadRateLimitFromOmc();
+  return loadRateLimitFromCache() ?? loadRateLimitFromAbtop();
 }
 
-/** abtop source: ~/.claude/abtop-rate-limits.json */
+/**
+ * Read from or refresh the local cache (~/.claude/ccmonitor-usage-cache.json).
+ * If the cache is fresh (<5 min), return it. Otherwise, fetch from the API,
+ * update the cache, and return the new data.
+ */
+function loadRateLimitFromCache(): RateLimitInfo | null {
+  const nowMs = Date.now();
+
+  // Try reading existing cache
+  if (existsSync(RATE_LIMIT_CACHE)) {
+    try {
+      const cached = JSON.parse(readFileSync(RATE_LIMIT_CACHE, 'utf-8'));
+      const cacheAge = nowMs - (cached.timestamp ?? 0);
+      if (cacheAge < RATE_LIMIT_CACHE_TTL && cached.data) {
+        return cachedDataToRateLimitInfo(cached);
+      }
+    } catch {
+      // Cache corrupt — fall through to refresh
+    }
+  }
+
+  // Cache missing or stale — fetch fresh data from the API
+  return fetchAndCacheRateLimit();
+}
+
+/**
+ * Read OAuth access token from macOS Keychain via the `security` CLI.
+ * Returns null on non-macOS or if no credentials are stored.
+ */
+function readOAuthToken(): string | null {
+  try {
+    const raw = execFileSync(
+      '/usr/bin/security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      { encoding: 'utf-8', timeout: 3000 },
+    ).trim();
+    const creds = JSON.parse(raw);
+    return creds?.claudeAiOauth?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch rate limits from the Anthropic OAuth usage API and write the result
+ * to the local cache file. Uses curl (synchronous) to keep the architecture
+ * consistent with the rest of the codebase.
+ */
+function fetchAndCacheRateLimit(): RateLimitInfo | null {
+  const token = readOAuthToken();
+  if (!token) return null;
+
+  try {
+    const raw = execFileSync('curl', [
+      '-s', '--max-time', '5',
+      '-H', `Authorization: Bearer ${token}`,
+      '-H', 'anthropic-beta: oauth-2025-04-20',
+      'https://api.anthropic.com/api/oauth/usage',
+    ], { encoding: 'utf-8', timeout: 8000 });
+
+    const resp = JSON.parse(raw);
+    // API returns utilization as a percentage (e.g. 14.0 = 14%), not a fraction.
+    const toEpochSec = (iso: string | undefined | null): number | null => {
+      if (!iso) return null;
+      const ms = new Date(iso).getTime();
+      return isNaN(ms) ? null : Math.floor(ms / 1000);
+    };
+    const pct = (v: unknown): number | null =>
+      typeof v === 'number' ? Math.round(v) : null;
+
+    const cached = {
+      timestamp: Date.now(),
+      data: {
+        fiveHourPct: pct(resp.five_hour?.utilization),
+        fiveHourResetsAt: toEpochSec(resp.five_hour?.resets_at),
+        weeklyPct: pct(resp.seven_day?.utilization),
+        weeklyResetsAt: toEpochSec(resp.seven_day?.resets_at),
+        sonnetWeeklyPct: pct(resp.seven_day_sonnet?.utilization),
+        opusWeeklyPct: pct(resp.seven_day_opus?.utilization),
+      },
+    };
+
+    // Write cache (best-effort — don't fail if write fails)
+    try {
+      writeFileSync(RATE_LIMIT_CACHE, JSON.stringify(cached, null, 2));
+    } catch { /* skip */ }
+
+    return cachedDataToRateLimitInfo(cached);
+  } catch {
+    return null;
+  }
+}
+
+/** Convert the local cache shape to RateLimitInfo. */
+function cachedDataToRateLimitInfo(cached: {
+  timestamp: number;
+  data: Record<string, unknown>;
+}): RateLimitInfo {
+  const d = cached.data;
+  const nowMs = Date.now();
+  const isStale = (nowMs - cached.timestamp) > RATE_LIMIT_CACHE_TTL;
+  return {
+    source: 'api',
+    fiveHourPct: typeof d.fiveHourPct === 'number' ? d.fiveHourPct : null,
+    fiveHourResetsAt: typeof d.fiveHourResetsAt === 'number' ? d.fiveHourResetsAt : null,
+    weeklyPct: typeof d.weeklyPct === 'number' ? d.weeklyPct : null,
+    weeklyResetsAt: typeof d.weeklyResetsAt === 'number' ? d.weeklyResetsAt : null,
+    sonnetWeeklyPct: typeof d.sonnetWeeklyPct === 'number' ? d.sonnetWeeklyPct : null,
+    opusWeeklyPct: typeof d.opusWeeklyPct === 'number' ? d.opusWeeklyPct : null,
+    updatedAt: cached.timestamp,
+    isStale,
+  };
+}
+
+/** Fallback: abtop source (~/.claude/abtop-rate-limits.json) for non-macOS or no Keychain. */
 function loadRateLimitFromAbtop(): RateLimitInfo | null {
   const filePath = join(CLAUDE_DIR, 'abtop-rate-limits.json');
   if (!existsSync(filePath)) return null;
@@ -848,48 +966,6 @@ function loadRateLimitFromAbtop(): RateLimitInfo | null {
       weeklyResetsAt: data.seven_day?.resets_at ?? null,
       sonnetWeeklyPct: null,
       opusWeeklyPct: null,
-      updatedAt,
-      isStale,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * OMC source: ~/.claude/plugins/oh-my-claudecode/.usage-cache.json
- *
- * Shape: { timestamp, data: { fiveHourPercent, weeklyPercent, fiveHourResetsAt,
- *          weeklyResetsAt, sonnetWeeklyPercent?, opusWeeklyPercent? }, source }
- */
-function loadRateLimitFromOmc(): RateLimitInfo | null {
-  const filePath = join(CLAUDE_DIR, 'plugins', 'oh-my-claudecode', '.usage-cache.json');
-  if (!existsSync(filePath)) return null;
-
-  try {
-    const raw = JSON.parse(readFileSync(filePath, 'utf-8'));
-    const data = raw.data;
-    if (!data) return null;
-
-    const nowMs = Date.now();
-    const updatedAt = typeof raw.timestamp === 'number' ? raw.timestamp : null;
-    const isStale = updatedAt !== null ? (nowMs - updatedAt) > 900_000 : true;
-
-    // Convert ISO date strings to epoch seconds for reset times
-    const toEpochSec = (v: unknown): number | null => {
-      if (!v) return null;
-      const ms = new Date(String(v)).getTime();
-      return isNaN(ms) ? null : Math.floor(ms / 1000);
-    };
-
-    return {
-      source: 'omc',
-      fiveHourPct: typeof data.fiveHourPercent === 'number' ? data.fiveHourPercent : null,
-      fiveHourResetsAt: toEpochSec(data.fiveHourResetsAt),
-      weeklyPct: typeof data.weeklyPercent === 'number' ? data.weeklyPercent : null,
-      weeklyResetsAt: toEpochSec(data.weeklyResetsAt),
-      sonnetWeeklyPct: typeof data.sonnetWeeklyPercent === 'number' ? data.sonnetWeeklyPercent : null,
-      opusWeeklyPct: typeof data.opusWeeklyPercent === 'number' ? data.opusWeeklyPercent : null,
       updatedAt,
       isStale,
     };
