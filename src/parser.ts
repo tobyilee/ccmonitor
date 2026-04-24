@@ -332,10 +332,16 @@ function loadActiveSessions(state: SessionState): void {
       try {
         const data = JSON.parse(readFileSync(join(sessionsDir, f), 'utf-8'));
         if (typeof data.pid === 'number' && isProcessAlive(data.pid)) {
+          const cwd = typeof data.cwd === 'string' ? data.cwd : '';
+          // The registry's sessionId can go stale (Claude Code writes it once at
+          // startup but doesn't update it when a new conversation begins in the
+          // same process). Resolve the actual latest sessionId from the transcript
+          // directory instead.
+          const resolvedSessionId = cwd ? resolveLatestSessionId(cwd) : '';
           alive.push({
             pid: data.pid,
-            sessionId: typeof data.sessionId === 'string' ? data.sessionId : '',
-            cwd: typeof data.cwd === 'string' ? data.cwd : '',
+            sessionId: resolvedSessionId || (typeof data.sessionId === 'string' ? data.sessionId : ''),
+            cwd,
             startedAt: new Date(typeof data.startedAt === 'number' ? data.startedAt : 0),
           });
         }
@@ -348,6 +354,31 @@ function loadActiveSessions(state: SessionState): void {
     state.activeSessions = alive;
   } catch {
     state.activeSessions = [];
+  }
+}
+
+/**
+ * Find the sessionId of the most recently modified .jsonl transcript for a given cwd.
+ * This is more reliable than reading the sessions/<pid>.json registry, which can
+ * contain a stale sessionId from a previous conversation in the same process.
+ */
+function resolveLatestSessionId(cwd: string): string | null {
+  const projectDir = join(CLAUDE_DIR, 'projects', cwdToProjectDirName(cwd));
+  if (!existsSync(projectDir)) return null;
+  try {
+    let latestMtime = 0;
+    let latestId: string | null = null;
+    const files = readdirSync(projectDir).filter((f: string) => f.endsWith('.jsonl'));
+    for (const file of files) {
+      const mtime = statSync(join(projectDir, file)).mtimeMs;
+      if (mtime > latestMtime) {
+        latestMtime = mtime;
+        latestId = file.replace('.jsonl', '');
+      }
+    }
+    return latestId;
+  } catch {
+    return null;
   }
 }
 
