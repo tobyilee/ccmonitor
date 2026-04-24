@@ -1,7 +1,8 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
-import type { SessionState, TeamInfo, TranscriptEntry, MemoryInfo } from './types.js';
+import { execFileSync } from 'child_process';
+import type { SessionState, TeamInfo, TranscriptEntry, MemoryInfo, RateLimitInfo, ToolDuration } from './types.js';
 
 const CLAUDE_DIR = join(homedir(), '.claude');
 
@@ -62,6 +63,17 @@ export function findLatestSession(cwd?: string): SessionState | null {
   return parseTranscript(targetSessionId, targetDir, transcriptFile);
 }
 
+/** Map model string to its context window size in tokens. */
+function getModelContextWindow(model: string): number {
+  const m = model.toLowerCase();
+  if (m.includes('[1m]')) return 1_000_000;
+  if (/opus-4-(?:[5-9]|\d{2,})/.test(m)) return 1_000_000;
+  if (m.includes('opus')) return 200_000;
+  if (m.includes('sonnet')) return 200_000;
+  if (m.includes('haiku')) return 200_000;
+  return 200_000;
+}
+
 export function parseTranscript(
   sessionId: string,
   projectDir: string,
@@ -95,17 +107,29 @@ export function parseTranscript(
     activeSessions: [],
     memory: null,
     effortLevel: null,
+    contextWindow: 200_000,
+    contextPercent: 0,
+    compactionCount: 0,
+    maxContextTokens: 0,
+    tokenHistory: [],
+    tokenBurnRate: 0,
+    rateLimit: null,
+    toolDurations: new Map(),
+    processMemMb: 0,
+    childProcesses: [],
   };
 
   if (!existsSync(transcriptFile)) return state;
 
   const content = readFileSync(transcriptFile, 'utf-8');
   const lines = content.split('\n').filter(l => l.trim());
+  // Track pending tool_use calls: id → { name, timestamp } for duration calculation
+  const pendingTools = new Map<string, { name: string; time: Date }>();
 
   for (const line of lines) {
     try {
       const entry: TranscriptEntry = JSON.parse(line);
-      processEntry(state, entry);
+      processEntry(state, entry, pendingTools);
     } catch {
       // Skip malformed lines
     }
@@ -136,6 +160,24 @@ export function parseTranscript(
   loadMemoryInfo(state);
   // Read current reasoning effort level from the settings cascade
   state.effortLevel = loadEffortLevel(projectDirToRealCwd(projectDir));
+
+  // Load account-level rate limit data (from abtop's StatusLine hook)
+  state.rateLimit = loadRateLimit();
+  // Load process memory and child processes for the current session's PID
+  loadProcessInfo(state);
+
+  // Derive context window from model, then calculate context percent and burn rate
+  state.contextWindow = getModelContextWindow(state.model);
+  state.contextPercent = state.contextTokens > 0
+    ? Math.round((state.contextTokens / state.contextWindow) * 100)
+    : 0;
+  // Token burn rate: average tokens per minute across session lifetime
+  if (state.startTime.getTime() > 0 && state.lastActivity.getTime() > state.startTime.getTime()) {
+    const totalTokens = state.tokenUsage.input + state.tokenUsage.output
+      + state.tokenUsage.cacheWrite + state.tokenUsage.cacheRead;
+    const elapsedMin = (state.lastActivity.getTime() - state.startTime.getTime()) / 60_000;
+    state.tokenBurnRate = elapsedMin > 0 ? Math.round(totalTokens / elapsedMin) : 0;
+  }
 
   return state;
 }
@@ -413,7 +455,11 @@ function promoteActiveSkill(state: SessionState, endTime: Date): void {
   state.activeSkill = null;
 }
 
-function processEntry(state: SessionState, entry: TranscriptEntry): void {
+function processEntry(
+  state: SessionState,
+  entry: TranscriptEntry,
+  pendingTools: Map<string, { name: string; time: Date }>,
+): void {
   // Use the entry's real timestamp; skip entries without timestamps for time tracking
   const entryTime = entry.timestamp ? new Date(entry.timestamp) : null;
 
@@ -441,6 +487,31 @@ function processEntry(state: SessionState, entry: TranscriptEntry): void {
   if (entry.message?.role === 'user') state.messageCount.user++;
   if (entry.message?.role === 'assistant') state.messageCount.assistant++;
   if (entry.type === 'system') state.messageCount.system++;
+
+  // Match tool_result entries with pending tool_use calls to calculate duration
+  if (entry.message?.role === 'user' && Array.isArray(entry.message.content)) {
+    for (const block of entry.message.content) {
+      if (block.type === 'tool_result' && block.tool_use_id) {
+        const pending = pendingTools.get(block.tool_use_id);
+        if (pending && entryTime) {
+          const durationMs = entryTime.getTime() - pending.time.getTime();
+          if (durationMs >= 0) {
+            const existing = state.toolDurations.get(pending.name);
+            if (existing) {
+              existing.avgMs = (existing.avgMs * existing.count + durationMs) / (existing.count + 1);
+              existing.maxMs = Math.max(existing.maxMs, durationMs);
+              existing.count++;
+            } else {
+              state.toolDurations.set(pending.name, {
+                name: pending.name, avgMs: durationMs, maxMs: durationMs, count: 1,
+              });
+            }
+          }
+          pendingTools.delete(block.tool_use_id);
+        }
+      }
+    }
+  }
 
   // Track skills invoked via slash commands (<command-name>/skill</command-name> in user messages)
   if (entry.message?.role === 'user') {
@@ -506,7 +577,21 @@ function processEntry(state: SessionState, entry: TranscriptEntry): void {
         + (u.cache_creation_input_tokens || 0)
         + (u.cache_read_input_tokens || 0);
       if (totalInput > 0) {
+        // Compaction detection: >30% drop in context tokens between consecutive turns
+        if (state.contextTokens > 0 && totalInput < state.contextTokens * 0.7) {
+          state.compactionCount++;
+        }
         state.contextTokens = totalInput;
+        if (totalInput > state.maxContextTokens) {
+          state.maxContextTokens = totalInput;
+        }
+      }
+      // Per-turn token history for sparkline (cap at 500 entries)
+      const turnTotal = (u.input_tokens || 0) + (u.output_tokens || 0)
+        + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+      if (turnTotal > 0) {
+        state.tokenHistory.push(turnTotal);
+        if (state.tokenHistory.length > 500) state.tokenHistory.shift();
       }
     }
   }
@@ -522,6 +607,10 @@ function processEntry(state: SessionState, entry: TranscriptEntry): void {
           existing.lastUsed = ts;
         } else {
           state.toolStats.set(block.name, { name: block.name, count: 1, lastUsed: ts });
+        }
+        // Register pending tool call for duration measurement
+        if (block.id) {
+          pendingTools.set(block.id, { name: block.name, time: ts });
         }
 
         // Track Skill tool usage + active skill state
@@ -726,4 +815,85 @@ function loadSkillHookState(state: SessionState): void {
       }
     }
   } catch { /* skip */ }
+}
+
+/**
+ * Read account-level rate limit data from abtop's StatusLine hook output.
+ *
+ * abtop writes to ~/.claude/abtop-rate-limits.json with this shape:
+ * { source, five_hour: { used_percentage, resets_at }, seven_day: { used_percentage, resets_at }, updated_at }
+ *
+ * Data older than 10 minutes is marked as stale.
+ */
+function loadRateLimit(): RateLimitInfo | null {
+  const filePath = join(CLAUDE_DIR, 'abtop-rate-limits.json');
+  if (!existsSync(filePath)) return null;
+
+  try {
+    const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    const nowSec = Math.floor(Date.now() / 1000);
+    const updatedAt = typeof data.updated_at === 'number' ? data.updated_at : null;
+    const isStale = updatedAt !== null ? (nowSec - updatedAt) > 600 : true;
+
+    return {
+      source: data.source || 'claude',
+      fiveHourPct: data.five_hour?.used_percentage ?? null,
+      fiveHourResetsAt: data.five_hour?.resets_at ?? null,
+      sevenDayPct: data.seven_day?.used_percentage ?? null,
+      sevenDayResetsAt: data.seven_day?.resets_at ?? null,
+      updatedAt,
+      isStale,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load process memory (RSS) and child processes for the Claude Code session.
+ * Finds the session's PID from activeSessions, then reads process info via `ps`.
+ * Uses execFileSync (no shell) to avoid command injection.
+ * Gracefully degrades — sets 0/empty on any failure.
+ */
+function loadProcessInfo(state: SessionState): void {
+  const session = state.activeSessions.find(s => s.sessionId === state.sessionId);
+  if (!session) return;
+  const pid = session.pid;
+
+  try {
+    const output = execFileSync(
+      'ps', ['-eo', 'pid=,ppid=,rss=,comm='],
+      { encoding: 'utf-8', timeout: 2000 },
+    );
+
+    const lines = output.trim().split('\n');
+    const procs = new Map<number, { ppid: number; rss: number; comm: string }>();
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 4) continue;
+      const p = parseInt(parts[0], 10);
+      const pp = parseInt(parts[1], 10);
+      const rss = parseInt(parts[2], 10); // in KB
+      const comm = parts.slice(3).join(' ');
+      if (!isNaN(p)) procs.set(p, { ppid: pp, rss, comm });
+    }
+
+    // Main process memory
+    const main = procs.get(pid);
+    if (main) {
+      state.processMemMb = Math.round(main.rss / 1024);
+    }
+
+    // Find direct children (one level deep)
+    const children: import('./types.js').ChildProcess[] = [];
+    for (const [childPid, info] of procs) {
+      if (info.ppid === pid && childPid !== pid) {
+        children.push({ pid: childPid, command: info.comm, memMb: Math.round(info.rss / 1024) });
+      }
+    }
+    children.sort((a, b) => b.memMb - a.memMb);
+    state.childProcesses = children.slice(0, 10);
+  } catch {
+    // ps failed — silently degrade
+  }
 }

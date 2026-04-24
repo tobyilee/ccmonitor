@@ -185,20 +185,27 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour12: false });
 }
 
-/** Get context window limit for a given model string */
-function getContextLimit(model: string): number {
-  const m = model.toLowerCase();
-  // Explicit 1M-variant marker, e.g. `claude-opus-4-7[1m]` — present at runtime
-  // even when the persisted JSONL strips it.
-  if (m.includes('[1m]')) return 1_000_000;
-  // Opus 4.5+ defaults to 1M context. Regex absorbs all future Opus 4.x
-  // versions (4-5, 4-6, 4-7, ..., 4-10, 4-11, ...) so each new release
-  // doesn't silently regress the percentage display.
-  if (/opus-4-(?:[5-9]|\d{2,})/.test(m)) return 1_000_000;
-  if (m.includes('opus')) return 200_000;
-  if (m.includes('sonnet')) return 200_000;
-  if (m.includes('haiku')) return 200_000;
-  return 200_000;
+/**
+ * Render a braille sparkline from an array of numeric values.
+ * Each braille character encodes two vertical dots (upper/lower),
+ * mapping value magnitude to one of 4 levels (⠀ ⣀ ⣤ ⣶ ⣿).
+ */
+function sparkline(values: number[], width: number): string {
+  if (values.length === 0) return '';
+  // Take the last `width * 2` values (each char encodes 2 values)
+  const maxChars = width;
+  const slice = values.slice(-maxChars);
+  const maxVal = Math.max(...slice, 1);
+  const chars: string[] = [];
+  for (const v of slice) {
+    const ratio = v / maxVal;
+    if (ratio <= 0) chars.push('⣀');
+    else if (ratio < 0.25) chars.push('⣀');
+    else if (ratio < 0.5) chars.push('⣤');
+    else if (ratio < 0.75) chars.push('⣶');
+    else chars.push('⣿');
+  }
+  return chars.join('');
 }
 
 export function render(
@@ -241,8 +248,7 @@ export function render(
   // Session info (2 lines for narrow screens)
   const sessionAge = formatDuration(now.getTime() - state.startTime.getTime());
   const sinceActivity = formatDuration(now.getTime() - state.lastActivity.getTime());
-  const ctxLimit = getContextLimit(state.model);
-  const ctxPct = state.contextTokens > 0 ? Math.round((state.contextTokens / ctxLimit) * 100) : 0;
+  const ctxPct = state.contextPercent;
   const ctxColor = ctxPct >= 85 ? FG.red : ctxPct >= 70 ? FG.yellow : FG.green;
   // Effort level color-codes intensity so it's legible at a glance:
   // xhigh = magenta (most distinctive), high = red, medium = yellow, low = gray.
@@ -280,8 +286,11 @@ export function render(
   const otherProjectsDisplay = otherProjects.length > 0
     ? ` ${DIM}(+${otherProjects.slice(0, MAX_PROJECTS_SHOWN).join(', ')}${otherProjects.length > MAX_PROJECTS_SHOWN ? `, +${otherProjects.length - MAX_PROJECTS_SHOWN}` : ''})${RESET}`
     : '';
+  const memPart = state.processMemMb > 0
+    ? `${DIM} Mem:${RESET}${FG.cyan}${state.processMemMb}MB${RESET}`
+    : '';
   lines.push(
-    `${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}`,
+    `${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}${memPart}`,
   );
   const { input, output, cacheWrite, cacheRead } = state.tokenUsage;
   lines.push(
@@ -293,6 +302,53 @@ export function render(
     `${FG.green}CR:${formatTokens(cacheRead)}${RESET}` +
     `${DIM} Files:${RESET}${FG.yellow}${state.editedFilesCount}${RESET}`,
   );
+
+  // Token analytics line: burn rate, compaction count, peak context, sparkline
+  const burnRateStr = state.tokenBurnRate > 0
+    ? `${FG.cyan}${formatTokens(state.tokenBurnRate)}${RESET}${DIM}/min${RESET}`
+    : `${DIM}--${RESET}`;
+  const compactStr = state.compactionCount > 0
+    ? `${FG.yellow}${state.compactionCount}${RESET}`
+    : `${FG.green}0${RESET}`;
+  const peakStr = state.maxContextTokens > 0
+    ? `${FG.cyan}${formatTokens(state.maxContextTokens)}${RESET}`
+    : `${DIM}--${RESET}`;
+  const sparkW = Math.min(20, Math.max(0, W - 60));
+  const spark = state.tokenHistory.length > 1
+    ? ` ${DIM}${sparkline(state.tokenHistory, sparkW)}${RESET}`
+    : '';
+  lines.push(
+    `${DIM} Rate:${RESET}${burnRateStr}` +
+    `${DIM} Compact:${RESET}${compactStr}` +
+    `${DIM} Peak:${RESET}${peakStr}` +
+    spark,
+  );
+
+  // --- Rate Limit Quota (from abtop) ---
+  if (state.rateLimit) {
+    const rl = state.rateLimit;
+    const staleTag = rl.isStale ? ` ${FG.gray}(stale)${RESET}` : '';
+    const fiveColor = (rl.fiveHourPct ?? 0) >= 80 ? FG.red : (rl.fiveHourPct ?? 0) >= 50 ? FG.yellow : FG.green;
+    const sevenColor = (rl.sevenDayPct ?? 0) >= 80 ? FG.red : (rl.sevenDayPct ?? 0) >= 50 ? FG.yellow : FG.green;
+    const fiveReset = rl.fiveHourResetsAt
+      ? ` ${DIM}(${formatDuration((rl.fiveHourResetsAt * 1000) - Date.now())})${RESET}`
+      : '';
+    const sevenReset = rl.sevenDayResetsAt
+      ? ` ${DIM}(${formatDuration((rl.sevenDayResetsAt * 1000) - Date.now())})${RESET}`
+      : '';
+    // Inline bar: ████░░░░░░ style, 10 chars wide
+    const bar = (pct: number, color: string): string => {
+      const filled = Math.round(pct / 10);
+      const empty = 10 - filled;
+      return `${color}${'█'.repeat(filled)}${FG.gray}${'░'.repeat(empty)}${RESET}`;
+    };
+    const fivePct = rl.fiveHourPct ?? 0;
+    const sevenPct = rl.sevenDayPct ?? 0;
+    lines.push(
+      `${DIM} Quota 5h:${RESET}${bar(fivePct, fiveColor)} ${fiveColor}${fivePct.toFixed(0)}%${RESET}${fiveReset}` +
+      `${DIM} 7d:${RESET}${bar(sevenPct, sevenColor)} ${sevenColor}${sevenPct.toFixed(0)}%${RESET}${sevenReset}${staleTag}`,
+    );
+  }
 
   // --- Last User Prompt ---
   const promptTitle = state.lastUserPromptTime
@@ -315,15 +371,22 @@ export function render(
   }
   lines.push(boxBottom(W, FG.white));
 
-  // --- Tools (compact: wrapped inside box) ---
+  // --- Tools (compact: wrapped inside box, with duration stats) ---
   const sortedTools = [...state.toolStats.values()].sort((a, b) => b.count - a.count);
   lines.push(boxTop('Tools', W, FG.cyan));
   if (sortedTools.length === 0) {
     lines.push(boxLine(`${DIM}(no tools used yet)${RESET}`, W));
   } else {
-    // Build chips and wrap into lines that fit the box width
-    const chips = sortedTools.map(t => `${FG.green}${t.name}${RESET}${DIM}:${t.count}${RESET}`);
-    const chipTexts = sortedTools.map(t => `${t.name}:${t.count}`);
+    // Build chips with optional avg duration: "Bash:11 ~2.3s"
+    const chips: string[] = [];
+    const chipTexts: string[] = [];
+    for (const t of sortedTools) {
+      const dur = state.toolDurations.get(t.name);
+      const durSuffix = dur ? ` ${DIM}~${formatDuration(dur.avgMs)}${RESET}` : '';
+      const durText = dur ? ` ~${formatDuration(dur.avgMs)}` : '';
+      chips.push(`${FG.green}${t.name}${RESET}${DIM}:${t.count}${RESET}${durSuffix}`);
+      chipTexts.push(`${t.name}:${t.count}${durText}`);
+    }
     const innerW = W - 4; // box borders + padding
     let currentLine = '';
     let currentLen = 0;
@@ -471,6 +534,24 @@ export function render(
     }
   }
   lines.push(boxBottom(W, FG.blue));
+
+  // --- Child Processes (only shown when non-empty) ---
+  if (state.childProcesses.length > 0) {
+    lines.push(boxTop('Processes', W, FG.gray));
+    for (const cp of state.childProcesses.slice(0, 5)) {
+      const cmdDisplay = cp.command.length > W - 25
+        ? cp.command.slice(0, W - 28) + '...'
+        : cp.command;
+      lines.push(boxLine(
+        `${DIM}pid:${RESET}${FG.cyan}${cp.pid}${RESET} ${DIM}mem:${RESET}${FG.yellow}${cp.memMb}MB${RESET} ${cmdDisplay}`,
+        W, FG.gray,
+      ));
+    }
+    if (state.childProcesses.length > 5) {
+      lines.push(boxLine(`${DIM}  ... +${state.childProcesses.length - 5} more${RESET}`, W, FG.gray));
+    }
+    lines.push(boxBottom(W, FG.gray));
+  }
 
   // --- File Activity ---
   lines.push(boxTop('File Activity', W, FG.gray));

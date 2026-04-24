@@ -103,6 +103,39 @@ export interface MemoryInfo {
   lastModified: Date | null;
 }
 
+export interface RateLimitInfo {
+  /** "claude" or "codex" */
+  source: string;
+  /** 5-hour window usage percentage (0-100), or null if unavailable */
+  fiveHourPct: number | null;
+  /** Epoch seconds when the 5-hour window resets */
+  fiveHourResetsAt: number | null;
+  /** 7-day window usage percentage (0-100), or null if unavailable */
+  sevenDayPct: number | null;
+  /** Epoch seconds when the 7-day window resets */
+  sevenDayResetsAt: number | null;
+  /** Epoch seconds when this data was last collected */
+  updatedAt: number | null;
+  /** Whether the data is stale (>10 minutes old) */
+  isStale: boolean;
+}
+
+export interface ToolDuration {
+  name: string;
+  /** Average execution time in milliseconds */
+  avgMs: number;
+  /** Maximum execution time in milliseconds */
+  maxMs: number;
+  /** Number of completed calls (with measured duration) */
+  count: number;
+}
+
+export interface ChildProcess {
+  pid: number;
+  command: string;
+  memMb: number;
+}
+
 export interface ActiveSkill {
   name: string;
   args?: string;
@@ -151,4 +184,31 @@ export interface SessionState {
    *  Resolved from the settings cascade: project .claude/settings.local.json → project .claude/settings.json → ~/.claude/settings.json.
    *  Null if no setting is found in any layer. */
   effortLevel: string | null;
+
+  // --- Context & Token Analytics (inspired by abtop) ---
+
+  /** Model's maximum context window in tokens (e.g. 200_000 or 1_000_000). */
+  contextWindow: number;
+  /** Current context usage as a percentage (0-100). Derived from contextTokens / contextWindow. */
+  contextPercent: number;
+  /** Number of detected context compactions (>30% drop in context tokens between consecutive turns). */
+  compactionCount: number;
+  /** Peak context tokens observed during this session. */
+  maxContextTokens: number;
+  /** Per-turn total token counts (input+output+cache) for sparkline rendering. Capped at 500 entries. */
+  tokenHistory: number[];
+  /** Average token burn rate in tokens per minute, calculated from session start to last activity. */
+  tokenBurnRate: number;
+
+  /** Account-level rate limit quota info (from abtop's StatusLine hook). Null if no data available. */
+  rateLimit: RateLimitInfo | null;
+
+  // --- Tool & Process Analytics ---
+
+  /** Per-tool execution duration stats (avg/max/count), derived from tool_use→tool_result timestamp pairs. */
+  toolDurations: Map<string, ToolDuration>;
+  /** Claude Code process memory usage in MB. 0 if unavailable. */
+  processMemMb: number;
+  /** Child processes spawned by the Claude Code session. */
+  childProcesses: ChildProcess[];
 }
