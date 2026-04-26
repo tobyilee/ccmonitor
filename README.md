@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.3.0**
+**Version: 1.4.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -179,7 +179,7 @@ ccmonitor is **fully decoupled** from Claude Code — it imports nothing from th
 
 ### Overview
 
-1. Converts `process.cwd()` to Claude's project directory name (`/Users/foo/bar` → `-Users-foo-bar`)
+1. Converts `process.cwd()` to Claude's project directory name by replacing `/`, `_`, and `.` with `-` (`/Users/foo/bar` → `-Users-foo-bar`; `/Users/foo/.claude/worktrees/x` → `-Users-foo--claude-worktrees-x`)
 2. Finds the latest `.jsonl` transcript in `~/.claude/projects/<dir>/`
 3. Parses each JSONL entry for tool usage, skills, tokens, messages, and model info
 4. Loads subagent metadata, team configs, and task files from disk

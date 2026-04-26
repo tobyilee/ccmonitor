@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-26
+
+### Fixed
+- **Session switcher (`n` key) now works for worktree paths.** `cwdToProjectDirName` only replaced `/` and `_` with `-`, but Claude Code also replaces `.` — so cwds like `/Users/foo/proj/.claude/worktrees/branch` were being mapped to `-Users-foo-proj-.claude-worktrees-branch` instead of the actual on-disk `-Users-foo-proj--claude-worktrees-branch`. `findSessionByCwdAndId` then returned null, `refreshState` silently reverted `selectedSession`, and pressing `n` looked like a no-op. The regex now also covers `.`, so worktree sessions are reachable through the switcher.
+
 ## [1.3.0] - 2026-04-24
 
 ### Added

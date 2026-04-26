@@ -8,11 +8,11 @@ const CLAUDE_DIR = join(homedir(), '.claude');
 
 /**
  * Convert a CWD path to the Claude project directory name.
- * Claude Code replaces '/' and '_' with '-',
- * e.g. /Users/foo_bar/baz → -Users-foo-bar-baz
+ * Claude Code replaces '/', '_', and '.' with '-',
+ * e.g. /Users/foo_bar/.claude → -Users-foo-bar--claude
  */
 export function cwdToProjectDirName(cwd: string): string {
-  return cwd.replace(/[/_]/g, '-');
+  return cwd.replace(/[/_.]/g, '-');
 }
 
 /**
