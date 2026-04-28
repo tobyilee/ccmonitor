@@ -172,7 +172,9 @@ function formatDuration(ms: number): string {
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+  if (h < 24) return `${h}h ${m % 60}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
 }
 
 function formatTokens(n: number): string {
@@ -374,21 +376,18 @@ export function render(
   }
   lines.push(boxBottom(W, FG.white));
 
-  // --- Tools (compact: wrapped inside box, with duration stats) ---
+  // --- Tools (compact: wrapped inside box) ---
   const sortedTools = [...state.toolStats.values()].sort((a, b) => b.count - a.count);
   lines.push(boxTop('Tools', W, FG.cyan));
   if (sortedTools.length === 0) {
     lines.push(boxLine(`${DIM}(no tools used yet)${RESET}`, W));
   } else {
-    // Build chips with optional avg duration: "Bash:11 ~2.3s"
+    // Build chips: "Bash:11"
     const chips: string[] = [];
     const chipTexts: string[] = [];
     for (const t of sortedTools) {
-      const dur = state.toolDurations.get(t.name);
-      const durSuffix = dur ? ` ${DIM}~${formatDuration(dur.avgMs)}${RESET}` : '';
-      const durText = dur ? ` ~${formatDuration(dur.avgMs)}` : '';
-      chips.push(`${FG.green}${t.name}${RESET}${DIM}:${t.count}${RESET}${durSuffix}`);
-      chipTexts.push(`${t.name}:${t.count}${durText}`);
+      chips.push(`${FG.green}${t.name}${RESET}${DIM}:${t.count}${RESET}`);
+      chipTexts.push(`${t.name}:${t.count}`);
     }
     const innerW = W - 4; // box borders + padding
     let currentLine = '';
