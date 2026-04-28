@@ -116,7 +116,6 @@ export function parseTranscript(
     rateLimit: null,
     toolDurations: new Map(),
     processMemMb: 0,
-    childProcesses: [],
   };
 
   if (!existsSync(transcriptFile)) return state;
@@ -163,7 +162,7 @@ export function parseTranscript(
 
   // Load account-level rate limit data (from abtop's StatusLine hook)
   state.rateLimit = loadRateLimit();
-  // Load process memory and child processes for the current session's PID
+  // Load process memory for the current session's PID
   loadProcessInfo(state);
 
   // Derive context window from model, then calculate context percent and burn rate
@@ -1006,10 +1005,10 @@ function loadRateLimitFromAbtop(): RateLimitInfo | null {
 }
 
 /**
- * Load process memory (RSS) and child processes for the Claude Code session.
- * Finds the session's PID from activeSessions, then reads process info via `ps`.
+ * Load process memory (RSS) for the Claude Code session.
+ * Finds the session's PID from activeSessions, then reads RSS via `ps`.
  * Uses execFileSync (no shell) to avoid command injection.
- * Gracefully degrades — sets 0/empty on any failure.
+ * Gracefully degrades — leaves processMemMb at 0 on any failure.
  */
 function loadProcessInfo(state: SessionState): void {
   const session = state.activeSessions.find(s => s.sessionId === state.sessionId);
@@ -1018,37 +1017,13 @@ function loadProcessInfo(state: SessionState): void {
 
   try {
     const output = execFileSync(
-      'ps', ['-eo', 'pid=,ppid=,rss=,comm='],
+      'ps', ['-o', 'rss=', '-p', String(pid)],
       { encoding: 'utf-8', timeout: 2000 },
     );
-
-    const lines = output.trim().split('\n');
-    const procs = new Map<number, { ppid: number; rss: number; comm: string }>();
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 4) continue;
-      const p = parseInt(parts[0], 10);
-      const pp = parseInt(parts[1], 10);
-      const rss = parseInt(parts[2], 10); // in KB
-      const comm = parts.slice(3).join(' ');
-      if (!isNaN(p)) procs.set(p, { ppid: pp, rss, comm });
+    const rssKb = parseInt(output.trim(), 10);
+    if (!isNaN(rssKb)) {
+      state.processMemMb = Math.round(rssKb / 1024);
     }
-
-    // Main process memory
-    const main = procs.get(pid);
-    if (main) {
-      state.processMemMb = Math.round(main.rss / 1024);
-    }
-
-    // Find direct children (one level deep)
-    const children: import('./types.js').ChildProcess[] = [];
-    for (const [childPid, info] of procs) {
-      if (info.ppid === pid && childPid !== pid) {
-        children.push({ pid: childPid, command: info.comm, memMb: Math.round(info.rss / 1024) });
-      }
-    }
-    children.sort((a, b) => b.memMb - a.memMb);
-    state.childProcesses = children.slice(0, 10);
   } catch {
     // ps failed — silently degrade
   }

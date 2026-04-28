@@ -134,12 +134,6 @@ export interface ToolDuration {
   count: number;
 }
 
-export interface ChildProcess {
-  pid: number;
-  command: string;
-  memMb: number;
-}
-
 export interface ActiveSkill {
   name: string;
   args?: string;
@@ -213,6 +207,4 @@ export interface SessionState {
   toolDurations: Map<string, ToolDuration>;
   /** Claude Code process memory usage in MB. 0 if unavailable. */
   processMemMb: number;
-  /** Child processes spawned by the Claude Code session. */
-  childProcesses: ChildProcess[];
 }

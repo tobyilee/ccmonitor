@@ -537,24 +537,6 @@ export function render(
   }
   lines.push(boxBottom(W, FG.blue));
 
-  // --- Child Processes (only shown when non-empty) ---
-  if (state.childProcesses.length > 0) {
-    lines.push(boxTop('Processes', W, FG.gray));
-    for (const cp of state.childProcesses.slice(0, 5)) {
-      const cmdDisplay = cp.command.length > W - 25
-        ? cp.command.slice(0, W - 28) + '...'
-        : cp.command;
-      lines.push(boxLine(
-        `${DIM}pid:${RESET}${FG.cyan}${cp.pid}${RESET} ${DIM}mem:${RESET}${FG.yellow}${cp.memMb}MB${RESET} ${cmdDisplay}`,
-        W, FG.gray,
-      ));
-    }
-    if (state.childProcesses.length > 5) {
-      lines.push(boxLine(`${DIM}  ... +${state.childProcesses.length - 5} more${RESET}`, W, FG.gray));
-    }
-    lines.push(boxBottom(W, FG.gray));
-  }
-
   // --- File Activity ---
   lines.push(boxTop('File Activity', W, FG.gray));
   const recentEvents = fileEvents.slice(-8);
