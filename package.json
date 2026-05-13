@@ -13,6 +13,6 @@
     "install:global": "bun run scripts/install.ts"
   },
   "dependencies": {
-    "chokidar": "^4.0.0"
+    "chokidar": "^5.0.0"
   }
 }
