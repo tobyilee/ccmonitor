@@ -305,22 +305,37 @@ export function render(
     `${DIM} Age:${RESET}${sessionAge}` +
     `${DIM} Idle:${RESET}${sinceActivity}`,
   );
-  // Active sessions on its own line — total count + other project basenames
-  // (dedicated line means we can show more project names without crowding)
+  // Active sessions on its own line — total count + other sessions with their
+  // registry name (falling back to cwd basename) and a live busy/idle dot.
   const sessionsTotal = state.activeSessions.length;
-  const otherProjects = state.activeSessions
-    .filter(s => s.sessionId !== state.sessionId && s.cwd)
-    .map(s => s.cwd.split('/').pop() || '')
-    .filter(Boolean);
+  const others = state.activeSessions
+    .filter(s => s.sessionId !== state.sessionId && s.cwd);
+  const sessionChip = (s: typeof others[number]): string => {
+    const label = s.name ?? (s.cwd.split('/').pop() || '?');
+    // busy = working (yellow ●), waiting = needs user input (red ●), idle = dim ○
+    const dot = s.status === 'busy'
+      ? `${FG.yellow}●${RESET}`
+      : s.status === 'waiting'
+        ? `${FG.red}●${RESET}`
+        : s.status === 'idle'
+          ? `${DIM}○${RESET}`
+          : '';
+    return `${dot}${DIM}${label}${RESET}`;
+  };
   const MAX_PROJECTS_SHOWN = 4;
-  const otherProjectsDisplay = otherProjects.length > 0
-    ? ` ${DIM}(+${otherProjects.slice(0, MAX_PROJECTS_SHOWN).join(', ')}${otherProjects.length > MAX_PROJECTS_SHOWN ? `, +${otherProjects.length - MAX_PROJECTS_SHOWN}` : ''})${RESET}`
+  const otherProjectsDisplay = others.length > 0
+    ? ` ${DIM}(+${RESET}${others.slice(0, MAX_PROJECTS_SHOWN).map(sessionChip).join(`${DIM}, ${RESET}`)}${others.length > MAX_PROJECTS_SHOWN ? `${DIM}, +${others.length - MAX_PROJECTS_SHOWN}${RESET}` : ''}${DIM})${RESET}`
     : '';
   const memPart = state.processMemMb > 0
     ? `${DIM} Mem:${RESET}${FG.cyan}${state.processMemMb}MB${RESET}`
     : '';
+  // Claude Code version of the current session, from the sessions registry
+  const selfSession = state.activeSessions.find(s => s.sessionId === state.sessionId);
+  const versionPart = selfSession?.version
+    ? `${DIM} CC:${RESET}${FG.green}v${selfSession.version}${RESET}`
+    : '';
   lines.push(
-    `${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}${memPart}`,
+    `${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}${memPart}${versionPart}`,
   );
   const { input, output, cacheWrite, cacheRead } = state.tokenUsage;
   lines.push(

@@ -350,6 +350,9 @@ function loadActiveSessions(state: SessionState): void {
             sessionId: resolvedSessionId || (typeof data.sessionId === 'string' ? data.sessionId : ''),
             cwd,
             startedAt: new Date(typeof data.startedAt === 'number' ? data.startedAt : 0),
+            name: typeof data.name === 'string' ? data.name : null,
+            status: typeof data.status === 'string' ? data.status : null,
+            version: typeof data.version === 'string' ? data.version : null,
           });
         }
       } catch {

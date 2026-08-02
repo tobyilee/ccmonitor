@@ -96,6 +96,12 @@ export interface AvailableSession {
   sessionId: string;
   cwd: string;
   startedAt: Date;
+  /** Short human-readable session name from the registry (e.g. "ccmonitor-b6"). Null on old versions. */
+  name: string | null;
+  /** Live status reported by Claude Code itself: "busy" | "idle". Null on old versions. */
+  status: string | null;
+  /** Claude Code version running this session (e.g. "2.1.220"). Null on old versions. */
+  version: string | null;
 }
 
 export interface MemoryInfo {
