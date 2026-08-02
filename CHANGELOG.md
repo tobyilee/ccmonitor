@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-02
+
+### Added
+- **AI session title in the header.** Newer Claude Code writes `ai-title` transcript entries with an AI-generated conversation title; it now renders next to the cwd/branch line, truncated CJK-aware to the terminal width.
+- **Live session status dots.** `~/.claude/sessions/<pid>.json` now reports each session's status directly. Other sessions render as registry-name chips (e.g. `ccmonitor-b6`) with a status dot: yellow ●=busy, red ●=waiting for user input, dim ○=idle.
+- **Claude Code version (`CC:vX.Y.Z`) in the header**, read from the current session's registry entry.
+
+### Changed
+- **Real cwd from transcript entries.** Every transcript entry now carries the session's actual `cwd`; the monitor prefers it over reversing the project directory name — which was lossy for paths containing `_` or `.` (NG-6). The reversal remains only as a fallback for old transcripts.
+- **Git branch from transcript entries as fallback.** Live `.git/HEAD` parsing is still the primary source (reflects mid-session branch switches immediately); the per-entry `gitBranch` field covers cases where HEAD is unreadable.
+- **Last Prompt panel now uses `last-prompt` entries.** Claude Code records the verbatim user-typed prompt as a dedicated entry type; the tag-stripping regex heuristic is demoted to a fallback for old transcripts.
+- **Effort indicator reads the per-turn `effort` field.** Newer Claude Code no longer persists `effortLevel` in the settings cascade (the indicator was silently blank); assistant entries now record the effort actually used per turn, which is authoritative. The settings cascade remains as a fallback.
+
 ## [1.4.0] - 2026-04-26
 
 ### Fixed

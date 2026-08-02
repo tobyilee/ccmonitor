@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.4.0**
+**Version: 1.5.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -12,9 +12,9 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 
 ```
  Claude Code Monitor                                                  17:18:00    [#1e3a8a bg, #ffffff bold]
- /Users/you/workspace/my-project [main]                                            [dim gray + magenta]
+ /Users/you/workspace/my-project [main] — Add git branch to the header bar         [dim gray + magenta + cyan]
  Session:a1b2c3d4 Model:claude-opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
- Sess:3 (+api, docs)
+ Sess:3 (+●api-f3, ○docs-a1) CC:v2.1.220
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
  Rate:8.2K/min Compact:1 Peak:245.3K ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
  Quota 5h:████░░░░░░ 42% (2h 15m) 7d:██░░░░░░░░ 18% (5d 3h)
@@ -60,12 +60,12 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ### Visual highlights
 
 - **Title bar** — deep blue (`#1e3a8a`) background with bold pure-white (`#ffffff`) text. Uses 24-bit truecolor for deterministic rendering across terminal themes.
-- **Path line** — dim gray cwd followed by the current git branch in magenta brackets (e.g. `[main]`), read directly from `.git/HEAD` with zero `git` subprocess overhead.
-- **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus the basenames of up to four other active projects (e.g. `Sess:5 (+ultrastudy, api, docs, tests)`). Additional projects beyond the first four are shown as a `+N` overflow count.
+- **Path line** — dim gray cwd (read from the transcript's per-entry `cwd` field, so paths containing `_` or `.` display correctly), the current git branch in magenta brackets (from `.git/HEAD`, with the transcript's `gitBranch` field as fallback), and the AI-generated session title in cyan — truncated CJK-aware to the terminal width.
+- **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
 - **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
-- **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap.
+- **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
-- **Reasoning effort** — `Effort:max` shows the current Claude Code reasoning level color-coded by intensity (max=magenta, high=red, medium=yellow, low=gray). Read from the same settings cascade Claude Code uses (project `.claude/settings.local.json` → project `.claude/settings.json` → user `~/.claude/settings.json`), so the value always matches the live session. The persisted internal value `xhigh` is displayed as `max` to match what `/effort max` accepts as input.
+- **Reasoning effort** — `Effort:max` shows the current Claude Code reasoning level color-coded by intensity (max=magenta, high=red, medium=yellow, low=gray). Read from the per-turn `effort` field newer Claude Code stamps on assistant transcript entries (the value actually used), falling back to the settings cascade (project `.claude/settings.local.json` → project `.claude/settings.json` → user `~/.claude/settings.json`) for old transcripts. The internal value `xhigh` is displayed as `max` to match what `/effort max` accepts as input.
 - **Token analytics** — `Rate:8.2K/min` shows average token burn rate, `Compact:1` counts detected context compactions (>30% token drops), `Peak:245.3K` tracks the high-water mark, and a braille sparkline visualizes per-turn token volume.
 - **Rate limit quota** — inline 10-char usage bars for the 5-hour and 7-day API quota windows (sourced from `~/.claude/abtop-rate-limits.json`). Color-coded green/yellow/red with reset countdowns. Marked `(stale)` when data is >10 minutes old.
 - **Tool durations** — each tool in the Tools panel shows its average execution time as a `~Ns` suffix (e.g. `Bash:12 ~2s`), computed by pairing `tool_use` → `tool_result` timestamps in the transcript.
