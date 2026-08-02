@@ -30,6 +30,8 @@ export interface TranscriptEntry {
   timestamp?: string;
   cwd?: string;
   gitBranch?: string;
+  // Reasoning effort actually used for this assistant turn (e.g. "high")
+  effort?: string;
   message?: {
     model?: string;
     role?: string;

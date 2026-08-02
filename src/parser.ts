@@ -163,8 +163,10 @@ export function parseTranscript(
   loadActiveSessions(state);
   // Read auto-memory state for this project
   loadMemoryInfo(state);
-  // Read current reasoning effort level from the settings cascade
-  state.effortLevel = loadEffortLevel(realCwd);
+  // Effort: transcript entries record the value actually used per turn
+  // (set in processEntry); the settings cascade is only a fallback for
+  // old transcripts that lack the per-entry field.
+  state.effortLevel = state.effortLevel ?? loadEffortLevel(realCwd);
 
   // Load account-level rate limit data (from abtop's StatusLine hook)
   state.rateLimit = loadRateLimit();
@@ -507,6 +509,9 @@ function processEntry(
   // branch. The last one seen wins (sessions can cd / switch branches).
   if (entry.cwd) state.cwd = entry.cwd;
   if (entry.gitBranch) state.gitBranch = entry.gitBranch;
+  // Effort actually used per assistant turn — authoritative over the settings
+  // cascade, which can lag or lack the key entirely on newer versions.
+  if (entry.effort) state.effortLevel = entry.effort;
 
   // Newer Claude Code writes the verbatim user prompt as a dedicated
   // last-prompt entry (follows the user message it belongs to). This is the
