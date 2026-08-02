@@ -84,6 +84,7 @@ export function parseTranscript(
     projectDir,
     transcriptFile,
     cwd: null,
+    sessionTitle: null,
     startTime: new Date(0),
     toolStats: new Map(),
     skills: new Map(),
@@ -515,6 +516,13 @@ function processEntry(
   // timestamp, so the time set by the preceding user message is kept.
   if (entry.type === 'last-prompt') {
     if (entry.lastPrompt) state.lastUserPrompt = entry.lastPrompt;
+    return;
+  }
+
+  // AI-generated session title — rewritten as the conversation evolves,
+  // so the last entry wins.
+  if (entry.type === 'ai-title') {
+    if (entry.aiTitle) state.sessionTitle = entry.aiTitle;
     return;
   }
 

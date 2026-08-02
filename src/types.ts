@@ -157,6 +157,8 @@ export interface SessionState {
    *  Preferred over deriving from projectDir, whose name mangling is lossy
    *  (`_` and `.` both become `-`). Null for old transcripts without the field. */
   cwd: string | null;
+  /** AI-generated session title (from ai-title transcript entries). Null if none yet. */
+  sessionTitle: string | null;
   startTime: Date;
   toolStats: Map<string, ToolStats>;
   skills: Map<string, SkillInfo>;

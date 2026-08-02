@@ -133,6 +133,20 @@ function wordWrap(text: string, width: number): string[] {
   return lines.length > 0 ? lines : [''];
 }
 
+/** Truncate a string to a maximum terminal display width (CJK-aware), adding … if cut. */
+function truncateToWidth(s: string, maxW: number): string {
+  if (displayWidth(s) <= maxW) return s;
+  let out = '';
+  let w = 0;
+  for (const ch of s) {
+    const chW = displayWidth(ch);
+    if (w + chW > maxW - 1) break; // reserve 1 col for the ellipsis
+    out += ch;
+    w += chW;
+  }
+  return out + '…';
+}
+
 function boxLine(content: string, width: number, color: string = FG.cyan): string {
   const dw = displayWidth(content);
   // │ + space + content + padding + │ = width
@@ -241,7 +255,17 @@ export function render(
   const branchSuffix = state?.gitBranch
     ? ` ${FG.magenta}[${state.gitBranch}]${RESET}`
     : '';
-  lines.push(`${DIM} ${cwdPath}${RESET}${branchSuffix}`);
+  // AI-generated session title, truncated to the width left after cwd + branch
+  let titleSuffix = '';
+  if (state?.sessionTitle) {
+    const usedW = displayWidth(` ${cwdPath}`) + displayWidth(stripAnsi(branchSuffix)) + 3; // " — "
+    const titleRoom = W - usedW;
+    if (titleRoom >= 4) {
+      const title = truncateToWidth(state.sessionTitle, titleRoom);
+      titleSuffix = `${DIM} — ${RESET}${FG.cyan}${title}${RESET}`;
+    }
+  }
+  lines.push(`${DIM} ${cwdPath}${RESET}${branchSuffix}${titleSuffix}`);
 
   if (!state) {
     lines.push('');
