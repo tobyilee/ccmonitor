@@ -507,6 +507,17 @@ function processEntry(
   if (entry.cwd) state.cwd = entry.cwd;
   if (entry.gitBranch) state.gitBranch = entry.gitBranch;
 
+  // Newer Claude Code writes the verbatim user prompt as a dedicated
+  // last-prompt entry (follows the user message it belongs to). This is the
+  // canonical source — it overrides the tag-stripping heuristic below, which
+  // stays as a fallback for old transcripts. Some last-prompt entries omit
+  // the text (leafUuid-only pointers); skip those. These entries carry no
+  // timestamp, so the time set by the preceding user message is kept.
+  if (entry.type === 'last-prompt') {
+    if (entry.lastPrompt) state.lastUserPrompt = entry.lastPrompt;
+    return;
+  }
+
   // Set startTime from the first timestamped entry
   if (entryTime && state.startTime.getTime() === 0) {
     state.startTime = entryTime;

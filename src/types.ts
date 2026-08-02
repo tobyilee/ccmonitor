@@ -10,7 +10,10 @@ export type EntryType =
   | 'update'
   | 'queue-operation'
   | 'tool_reference'
-  | 'attachment';
+  | 'attachment'
+  | 'last-prompt'
+  | 'ai-title'
+  | 'mode';
 
 export interface ToolUse {
   name: string;
@@ -52,6 +55,10 @@ export interface TranscriptEntry {
   status?: string;
   taskId?: string;
   description?: string;
+  // last-prompt entries: the verbatim user-typed prompt
+  lastPrompt?: string;
+  // ai-title entries: AI-generated session title
+  aiTitle?: string;
 }
 
 export interface ToolStats {
