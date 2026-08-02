@@ -83,6 +83,7 @@ export function parseTranscript(
     sessionId,
     projectDir,
     transcriptFile,
+    cwd: null,
     startTime: new Date(0),
     toolStats: new Map(),
     skills: new Map(),
@@ -149,8 +150,12 @@ export function parseTranscript(
   loadTasks(state);
   // Check PostToolUse hook state file for faster skill completion detection
   loadSkillHookState(state);
-  // Read git branch from the project cwd (derived from Claude's projectDir convention)
-  state.gitBranch = readGitBranch(projectDirToRealCwd(projectDir));
+  // Resolve the real cwd: transcript entries carry it directly (newer Claude Code
+  // versions); fall back to the lossy projectDir name reversal for old transcripts.
+  const realCwd = state.cwd ?? projectDirToRealCwd(projectDir);
+  // Git branch: live .git/HEAD read (reflects branch switches between messages),
+  // falling back to the branch recorded in the latest transcript entry.
+  state.gitBranch = readGitBranch(realCwd) ?? state.gitBranch;
   // Count unique files edited in this session (from file-history backups)
   loadEditedFilesCount(state);
   // Count live Claude Code sessions across all terminals/projects
@@ -158,7 +163,7 @@ export function parseTranscript(
   // Read auto-memory state for this project
   loadMemoryInfo(state);
   // Read current reasoning effort level from the settings cascade
-  state.effortLevel = loadEffortLevel(projectDirToRealCwd(projectDir));
+  state.effortLevel = loadEffortLevel(realCwd);
 
   // Load account-level rate limit data (from abtop's StatusLine hook)
   state.rateLimit = loadRateLimit();
@@ -496,6 +501,11 @@ function processEntry(
   if (entry.type === 'permission-mode') {
     return;
   }
+
+  // Newer Claude Code versions stamp every entry with the real cwd and git
+  // branch. The last one seen wins (sessions can cd / switch branches).
+  if (entry.cwd) state.cwd = entry.cwd;
+  if (entry.gitBranch) state.gitBranch = entry.gitBranch;
 
   // Set startTime from the first timestamped entry
   if (entryTime && state.startTime.getTime() === 0) {

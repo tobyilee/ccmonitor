@@ -26,6 +26,7 @@ export interface TranscriptEntry {
   isSidechain?: boolean;
   timestamp?: string;
   cwd?: string;
+  gitBranch?: string;
   message?: {
     model?: string;
     role?: string;
@@ -145,6 +146,10 @@ export interface SessionState {
   sessionId: string;
   projectDir: string;
   transcriptFile: string;
+  /** Real working directory as recorded in transcript entries (`cwd` field).
+   *  Preferred over deriving from projectDir, whose name mangling is lossy
+   *  (`_` and `.` both become `-`). Null for old transcripts without the field. */
+  cwd: string | null;
   startTime: Date;
   toolStats: Map<string, ToolStats>;
   skills: Map<string, SkillInfo>;

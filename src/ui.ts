@@ -232,8 +232,12 @@ export function render(
   lines.push(
     `${BG.deepBlue}${FG_PURE_WHITE}${BOLD}${headerText}${' '.repeat(Math.max(0, headerPad))}${timeText}${RESET}`,
   );
-  // Current working directory + git branch (if available)
-  const cwdPath = state ? state.projectDir.replace(/.*projects\//, '').replace(/-/g, '/') : process.cwd();
+  // Current working directory + git branch (if available).
+  // Prefer the real cwd recorded in the transcript; the projectDir name
+  // reversal is lossy ('_' and '.' were also mangled to '-').
+  const cwdPath = state
+    ? state.cwd ?? state.projectDir.replace(/.*projects\//, '').replace(/-/g, '/')
+    : process.cwd();
   const branchSuffix = state?.gitBranch
     ? ` ${FG.magenta}[${state.gitBranch}]${RESET}`
     : '';
