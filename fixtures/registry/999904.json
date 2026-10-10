@@ -1,0 +1,24 @@
+{
+  "pid": 999904,
+  "sessionId": "7fe32363-515c-4a1b-b09d-c62eb5ccacf4",
+  "cwd": "/Users/dev/workspace/sandbox/kotlin",
+  "startedAt": 1791575765025,
+  "procStart": "Fri Oct  9 19:56:02 2026",
+  "version": "2.1.295",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "claude-desktop",
+  "hostSessionId": "local_aadec47b-80a1-4ccf-bf5c-dd11c08657a9",
+  "pidDomain": "darwin",
+  "messagingSocketPath": "/tmp/cc-socks/999904.sock",
+  "name": "Kotlin 1.9에서 2.4로 마이그레이션 가이드",
+  "nameSince": 1791575765025,
+  "updatedAt": 1791575765499,
+  "status": "idle",
+  "statusUpdatedAt": 1791575765499
+}

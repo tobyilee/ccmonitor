@@ -1,0 +1,49 @@
+{
+  "lines": 15,
+  "types": {
+    "assistant": 5,
+    "pr-link": 2,
+    "custom-title": 3,
+    "agent-name": 3,
+    "frame-link": 2
+  },
+  "systemSubtypes": {},
+  "attachmentTypes": {},
+  "stopReasons": {
+    "tool_use": 2
+  },
+  "messageIds": [
+    "msg_011CfpgAHx5BpRhJakkCSREg",
+    "msg_011Cfoz41jB4mKTvr3mZ4FCV"
+  ],
+  "outputTokensByMessage": {
+    "msg_011CfpgAHx5BpRhJakkCSREg": 674,
+    "msg_011Cfoz41jB4mKTvr3mZ4FCV": 3576
+  },
+  "promptSources": {},
+  "turnOrigins": {},
+  "permissionReasonTypes": {},
+  "permissionDecisions": {},
+  "hookEvents": {},
+  "queueOperations": {},
+  "trackingPaths": {},
+  "attributionSkills": {},
+  "mcpServers": {},
+  "toolNames": {
+    "Bash": 1
+  },
+  "models": {
+    "claude-fable-5-1": 2
+  },
+  "versions": {
+    "2.1.293": 5
+  },
+  "entrypoints": {
+    "cli": 2,
+    "claude-desktop": 3
+  },
+  "toolDenialKinds": {},
+  "interrupted": 0,
+  "apiErrors": 0,
+  "humanPrompts": 0
+}

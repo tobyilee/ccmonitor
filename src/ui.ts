@@ -436,13 +436,14 @@ export function render(
     let currentLine = '';
     let currentLen = 0;
     for (let i = 0; i < chips.length; i++) {
-      const chipLen = chipTexts[i].length;
+      const chip = chips[i] ?? '';
+      const chipLen = (chipTexts[i] ?? '').length;
       if (currentLen > 0 && currentLen + 1 + chipLen > innerW) {
         lines.push(boxLine(currentLine, W));
-        currentLine = chips[i];
+        currentLine = chip;
         currentLen = chipLen;
       } else {
-        currentLine += (currentLen > 0 ? ' ' : '') + chips[i];
+        currentLine += (currentLen > 0 ? ' ' : '') + chip;
         currentLen += (currentLen > 0 ? 1 : 0) + chipLen;
       }
     }
@@ -501,9 +502,10 @@ export function render(
     lines.push(boxLine(`${DIM}(no skills invoked)${RESET}`, W, FG.magenta));
   }
   // Show skill history (skip the first entry if it matches lastCompletedSkill)
-  const historyStart = (state.lastCompletedSkill && state.skillHistory.length > 0
-    && state.skillHistory[0].name === state.lastCompletedSkill.name
-    && state.skillHistory[0].endTime === state.lastCompletedSkill.endTime) ? 1 : 0;
+  const historyHead = state.skillHistory[0];
+  const historyStart = (state.lastCompletedSkill && historyHead
+    && historyHead.name === state.lastCompletedSkill.name
+    && historyHead.endTime === state.lastCompletedSkill.endTime) ? 1 : 0;
   for (const h of state.skillHistory.slice(historyStart, historyStart + 5)) {
     const hArgs = h.args ? ` (${h.args.slice(0, 20)})` : '';
     lines.push(boxLine(

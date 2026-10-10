@@ -1,0 +1,25 @@
+{
+  "pid": 999906,
+  "sessionId": "07574c00-f2e3-4bf3-b5e9-4c7ea302df03",
+  "cwd": "/Users/dev/workspace/ai/book-writer/.claude/worktrees/trust-curve",
+  "startedAt": 1791605149336,
+  "procStart": "Sat Oct 10 04:05:46 2026",
+  "version": "2.1.296",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "darwin",
+  "messagingSocketPath": "/tmp/cc-socks/999906.sock",
+  "name": "trust-curve-a3",
+  "nameSource": "derived",
+  "nameSince": 1791605149336,
+  "status": "busy",
+  "updatedAt": 1791605322779,
+  "statusUpdatedAt": 1791605322779,
+  "bridgeSessionId": "session_01QpVDt8ZQUXUGSCdR46QHo9"
+}

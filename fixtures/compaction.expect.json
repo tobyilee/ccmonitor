@@ -1,0 +1,54 @@
+{
+  "lines": 30,
+  "types": {
+    "last-prompt": 1,
+    "mode": 1,
+    "permission-mode": 1,
+    "attachment": 3,
+    "system": 5,
+    "bridge-session": 3,
+    "queue-operation": 2,
+    "file-history-snapshot": 1,
+    "atis-latch": 3,
+    "pr-link": 2,
+    "user": 8
+  },
+  "systemSubtypes": {
+    "local_command": 2,
+    "bridge_status": 1,
+    "compact_boundary": 2
+  },
+  "attachmentTypes": {
+    "hook_success": 1,
+    "file": 2
+  },
+  "stopReasons": {},
+  "messageIds": [],
+  "outputTokensByMessage": {},
+  "promptSources": {},
+  "turnOrigins": {},
+  "permissionReasonTypes": {},
+  "permissionDecisions": {},
+  "hookEvents": {
+    "SessionStart": 1
+  },
+  "queueOperations": {
+    "enqueue": 1,
+    "dequeue": 1
+  },
+  "trackingPaths": {},
+  "attributionSkills": {},
+  "mcpServers": {},
+  "toolNames": {},
+  "models": {},
+  "versions": {
+    "2.1.293": 16
+  },
+  "entrypoints": {
+    "cli": 16
+  },
+  "toolDenialKinds": {},
+  "interrupted": 0,
+  "apiErrors": 0,
+  "humanPrompts": 0
+}

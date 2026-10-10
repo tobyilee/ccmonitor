@@ -1,0 +1,134 @@
+{
+  "lines": 226,
+  "types": {
+    "last-prompt": 13,
+    "mode": 13,
+    "permission-mode": 13,
+    "atis-latch": 13,
+    "attachment": 93,
+    "file-history-snapshot": 3,
+    "user": 20,
+    "ai-title": 12,
+    "assistant": 38,
+    "file-history-delta": 3,
+    "system": 5
+  },
+  "systemSubtypes": {
+    "stop_hook_summary": 2,
+    "turn_duration": 2,
+    "away_summary": 1
+  },
+  "attachmentTypes": {
+    "hook_success": 22,
+    "environment": 1,
+    "model": 1,
+    "deferred_tools_delta": 1,
+    "agent_listing_delta": 1,
+    "mcp_instructions_delta": 1,
+    "skill_listing": 1,
+    "auto_mode": 1,
+    "total_tokens_reminder": 20,
+    "instructions": 1,
+    "date": 1,
+    "remote_session_change": 1,
+    "bash_output_audience_note": 9,
+    "batching_reminder_sent": 17,
+    "deferred_tools_record": 14,
+    "edited_text_file": 1
+  },
+  "stopReasons": {
+    "tool_use": 17,
+    "end_turn": 2
+  },
+  "messageIds": [
+    "msg_011CfsqkAy8H2tJKPnokNzYh",
+    "msg_011CfsqmJNu5CBUg8Eoe5a7G",
+    "msg_011CfsqmmoQvv4tJ1TxbzJ65",
+    "msg_011CfsqpVk6tRhN5ymbSc9vh",
+    "msg_011CfsqpwwhN7PUPMgUaSR6F",
+    "msg_011CfsqupvQt4fXPfoNxzA1B",
+    "msg_011Cfsqx7wQ5ygbQSBxtNufe",
+    "msg_011CfsqxQADeXbiL3toJ1ZfK",
+    "msg_011Cfsr146oP7o2qFjxSerbo",
+    "msg_011Cfsr1oxXZZnUnSYACfNma",
+    "msg_011Cfsr32ufqX7V5LVWXYqJ1",
+    "msg_011Cfsr4N4dTR2k6sGecPcpd",
+    "msg_011Cfsr68qwXCfCfXuuXuVza",
+    "msg_011Cfsr6QRKbXiFPUEidgEMU",
+    "msg_011Cfsr6mjyJRWs5FMMjGQ4h",
+    "msg_011Cfsr7dZN5HMtVDQ5LsjEE",
+    "msg_011CfsrFi2y8ngyxLF3ersPu",
+    "msg_011CfsrHM5x682ADRG8wU5AP",
+    "msg_011CfsspUuyDFnzhvKh9q23g"
+  ],
+  "outputTokensByMessage": {
+    "msg_011CfsqkAy8H2tJKPnokNzYh": 880,
+    "msg_011CfsqmJNu5CBUg8Eoe5a7G": 358,
+    "msg_011CfsqmmoQvv4tJ1TxbzJ65": 2769,
+    "msg_011CfsqpVk6tRhN5ymbSc9vh": 318,
+    "msg_011CfsqpwwhN7PUPMgUaSR6F": 5544,
+    "msg_011CfsqupvQt4fXPfoNxzA1B": 2588,
+    "msg_011Cfsqx7wQ5ygbQSBxtNufe": 204,
+    "msg_011CfsqxQADeXbiL3toJ1ZfK": 3833,
+    "msg_011Cfsr146oP7o2qFjxSerbo": 135,
+    "msg_011Cfsr1oxXZZnUnSYACfNma": 503,
+    "msg_011Cfsr32ufqX7V5LVWXYqJ1": 1623,
+    "msg_011Cfsr4N4dTR2k6sGecPcpd": 1531,
+    "msg_011Cfsr68qwXCfCfXuuXuVza": 68,
+    "msg_011Cfsr6QRKbXiFPUEidgEMU": 238,
+    "msg_011Cfsr6mjyJRWs5FMMjGQ4h": 794,
+    "msg_011Cfsr7dZN5HMtVDQ5LsjEE": 1228,
+    "msg_011CfsrFi2y8ngyxLF3ersPu": 641,
+    "msg_011CfsrHM5x682ADRG8wU5AP": 442,
+    "msg_011CfsspUuyDFnzhvKh9q23g": 978
+  },
+  "promptSources": {
+    "typed": 3
+  },
+  "turnOrigins": {
+    "human": 3
+  },
+  "permissionReasonTypes": {
+    "classifier": 12,
+    "hook": 2,
+    "mode": 3
+  },
+  "permissionDecisions": {
+    "accept": 15,
+    "reject": 2
+  },
+  "hookEvents": {
+    "SessionStart": 1,
+    "PreToolUse": 17,
+    "Stop": 4
+  },
+  "queueOperations": {},
+  "trackingPaths": {
+    "scripts/pr.sh": 1,
+    "scripts/pr.test.sh": 1,
+    "/Users/dev/.claude/CLAUDE.md": 1
+  },
+  "attributionSkills": {},
+  "mcpServers": {},
+  "toolNames": {
+    "Bash": 13,
+    "Write": 2,
+    "Read": 1,
+    "Edit": 1
+  },
+  "models": {
+    "claude-fable-5-1": 19
+  },
+  "versions": {
+    "2.1.296": 156
+  },
+  "entrypoints": {
+    "cli": 156
+  },
+  "toolDenialKinds": {
+    "permission-rule": 2
+  },
+  "interrupted": 0,
+  "apiErrors": 0,
+  "humanPrompts": 3
+}

@@ -31,9 +31,9 @@ function parseArgs(argv: string[]): Options {
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--name' && argv[i + 1]) {
-      opts.name = argv[++i];
+      opts.name = argv[++i] ?? opts.name;
     } else if (arg === '--dir' && argv[i + 1]) {
-      opts.dir = resolve(argv[++i]);
+      opts.dir = resolve(argv[++i] ?? opts.dir);
     } else if (arg === '-h' || arg === '--help') {
       console.log(`
 Usage: bun run scripts/install.ts [options]

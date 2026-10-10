@@ -1,0 +1,24 @@
+{
+  "pid": 999901,
+  "sessionId": "f545df90-6541-48d7-8a9c-a3762fb000d7",
+  "cwd": "/Users/dev/workspace/work/bmx/bzengage",
+  "startedAt": 1791607134279,
+  "procStart": "Sat Oct 10 04:38:53 2026",
+  "version": "2.1.296",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "darwin",
+  "messagingSocketPath": "/tmp/cc-socks/999901.sock",
+  "name": "bzengage-9d",
+  "nameSource": "derived",
+  "nameSince": 1791607134279,
+  "status": "idle",
+  "updatedAt": 1791607134335,
+  "statusUpdatedAt": 1791607134335
+}

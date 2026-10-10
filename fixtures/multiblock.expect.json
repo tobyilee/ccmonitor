@@ -1,0 +1,80 @@
+{
+  "lines": 36,
+  "types": {
+    "last-prompt": 2,
+    "mode": 2,
+    "permission-mode": 2,
+    "atis-latch": 2,
+    "attachment": 18,
+    "file-history-snapshot": 1,
+    "user": 1,
+    "ai-title": 1,
+    "assistant": 5,
+    "system": 2
+  },
+  "systemSubtypes": {
+    "stop_hook_summary": 1,
+    "turn_duration": 1
+  },
+  "attachmentTypes": {
+    "hook_success": 4,
+    "environment": 1,
+    "model": 1,
+    "deferred_tools_delta": 1,
+    "agent_listing_delta": 1,
+    "mcp_instructions_delta": 1,
+    "skill_listing": 1,
+    "auto_mode": 1,
+    "total_tokens_reminder": 2,
+    "instructions": 1,
+    "date": 1,
+    "remote_session_change": 1,
+    "batching_reminder_sent": 1,
+    "deferred_tools_record": 1
+  },
+  "stopReasons": {
+    "tool_use": 1,
+    "end_turn": 1
+  },
+  "messageIds": [
+    "msg_011CfsqkAy8H2tJKPnokNzYh",
+    "msg_011Cfsr7dZN5HMtVDQ5LsjEE"
+  ],
+  "outputTokensByMessage": {
+    "msg_011CfsqkAy8H2tJKPnokNzYh": 880,
+    "msg_011Cfsr7dZN5HMtVDQ5LsjEE": 1228
+  },
+  "promptSources": {
+    "typed": 1
+  },
+  "turnOrigins": {
+    "human": 1
+  },
+  "permissionReasonTypes": {},
+  "permissionDecisions": {},
+  "hookEvents": {
+    "SessionStart": 1,
+    "PreToolUse": 1,
+    "Stop": 2
+  },
+  "queueOperations": {},
+  "trackingPaths": {},
+  "attributionSkills": {},
+  "mcpServers": {},
+  "toolNames": {
+    "Bash": 1
+  },
+  "models": {
+    "claude-fable-5-1": 2
+  },
+  "versions": {
+    "2.1.296": 26
+  },
+  "entrypoints": {
+    "cli": 26
+  },
+  "toolDenialKinds": {},
+  "interrupted": 0,
+  "apiErrors": 0,
+  "humanPrompts": 1
+}

@@ -1,0 +1,24 @@
+{
+  "pid": 999902,
+  "sessionId": "b7a3fc04-de70-4c43-adc1-1d041c43c567",
+  "cwd": "/Users/dev/workspace/work/bmx/bzflow2",
+  "startedAt": 1791602510524,
+  "procStart": "Sat Oct 10 03:21:49 2026",
+  "version": "2.1.296",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "darwin",
+  "messagingSocketPath": "/tmp/cc-socks/999902.sock",
+  "name": "bzflow2-a4",
+  "nameSource": "derived",
+  "nameSince": 1791602510524,
+  "status": "idle",
+  "updatedAt": 1791604529319,
+  "statusUpdatedAt": 1791604529319
+}

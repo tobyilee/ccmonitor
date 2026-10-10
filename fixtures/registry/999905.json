@@ -1,0 +1,25 @@
+{
+  "pid": 999905,
+  "sessionId": "253aaf04-fe1a-4d97-b8eb-87ee6b61659f",
+  "cwd": "/Users/dev/workspace/work/bmx/bzflow",
+  "startedAt": 1791592913609,
+  "procStart": "Sat Oct 10 00:41:52 2026",
+  "version": "2.1.296",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "darwin",
+  "messagingSocketPath": "/tmp/cc-socks/999905.sock",
+  "name": "bzflow-3d",
+  "nameSource": "derived",
+  "nameSince": 1791592913609,
+  "status": "busy",
+  "updatedAt": 1791607001631,
+  "statusUpdatedAt": 1791607001631,
+  "bridgeSessionId": "session_017JnS1iuryDtCHV16kmtetP"
+}

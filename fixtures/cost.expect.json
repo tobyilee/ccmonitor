@@ -1,0 +1,43 @@
+{
+  "lines": 4,
+  "types": {
+    "assistant": 2,
+    "cost-state": 2
+  },
+  "systemSubtypes": {},
+  "attachmentTypes": {},
+  "stopReasons": {
+    "tool_use": 1
+  },
+  "messageIds": [
+    "msg_011CfX3t1kHbTuDJ4NHskrkf"
+  ],
+  "outputTokensByMessage": {
+    "msg_011CfX3t1kHbTuDJ4NHskrkf": 202
+  },
+  "promptSources": {},
+  "turnOrigins": {},
+  "permissionReasonTypes": {},
+  "permissionDecisions": {},
+  "hookEvents": {},
+  "queueOperations": {},
+  "trackingPaths": {},
+  "attributionSkills": {},
+  "mcpServers": {},
+  "toolNames": {
+    "Bash": 1
+  },
+  "models": {
+    "claude-sonnet-5-5": 1
+  },
+  "versions": {
+    "2.1.284": 2
+  },
+  "entrypoints": {
+    "cli": 2
+  },
+  "toolDenialKinds": {},
+  "interrupted": 0,
+  "apiErrors": 0,
+  "humanPrompts": 0
+}

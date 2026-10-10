@@ -1,0 +1,69 @@
+{
+  "lines": 27,
+  "types": {
+    "last-prompt": 2,
+    "mode": 2,
+    "permission-mode": 2,
+    "atis-latch": 2,
+    "attachment": 12,
+    "file-history-snapshot": 2,
+    "user": 3,
+    "assistant": 1,
+    "system": 1
+  },
+  "systemSubtypes": {
+    "turn_duration": 1
+  },
+  "attachmentTypes": {
+    "hook_success": 1,
+    "environment": 1,
+    "model": 1,
+    "deferred_tools_delta": 1,
+    "agent_listing_delta": 1,
+    "mcp_instructions_delta": 1,
+    "skill_listing": 1,
+    "auto_mode": 1,
+    "total_tokens_reminder": 1,
+    "instructions": 1,
+    "date": 1,
+    "remote_session_change": 1
+  },
+  "stopReasons": {
+    "stop_sequence": 1
+  },
+  "messageIds": [
+    "fac729cf-43d3-4ddb-b79f-db0310a00cf6"
+  ],
+  "outputTokensByMessage": {
+    "fac729cf-43d3-4ddb-b79f-db0310a00cf6": 0
+  },
+  "promptSources": {
+    "typed": 1
+  },
+  "turnOrigins": {
+    "human": 1
+  },
+  "permissionReasonTypes": {},
+  "permissionDecisions": {},
+  "hookEvents": {
+    "SessionStart": 1
+  },
+  "queueOperations": {},
+  "trackingPaths": {},
+  "attributionSkills": {},
+  "mcpServers": {},
+  "toolNames": {},
+  "models": {
+    "<synthetic>": 1
+  },
+  "versions": {
+    "2.1.296": 17
+  },
+  "entrypoints": {
+    "cli": 17
+  },
+  "toolDenialKinds": {},
+  "interrupted": 0,
+  "apiErrors": 1,
+  "humanPrompts": 1
+}

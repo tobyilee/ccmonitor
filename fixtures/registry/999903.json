@@ -1,0 +1,25 @@
+{
+  "pid": 999903,
+  "sessionId": "e8e8aba3-67d8-47fd-a4d0-461608735fb1",
+  "cwd": "/Users/dev/workspace/ai/ccmonitor",
+  "startedAt": 1791603121889,
+  "procStart": "Sat Oct 10 03:32:00 2026",
+  "version": "2.1.296",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "darwin",
+  "messagingSocketPath": "/tmp/cc-socks/999903.sock",
+  "name": "ccmonitor-2c",
+  "nameSource": "derived",
+  "nameSince": 1791603121889,
+  "status": "busy",
+  "updatedAt": 1791607085097,
+  "statusUpdatedAt": 1791607085097,
+  "bridgeSessionId": "session_013QNdwVfxmNz8bE2AjS9QS7"
+}
