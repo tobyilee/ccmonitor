@@ -8,6 +8,7 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
+import { appendFileSync } from 'fs';
 import { join, resolve, dirname, basename } from 'path';
 import {
   CLAUDE_DIR,
@@ -21,6 +22,7 @@ import {
 import { render, cleanup, sectionForKey, type View } from './ui.js';
 import { sessionRows } from './views/sessions.js';
 import { loadUiPrefs, saveUiPrefs } from './uiPrefs.js';
+import { splitKeys } from './keys.js';
 import type { SessionState } from './types.js';
 
 const REFRESH_INTERVAL = 2000;
@@ -181,7 +183,18 @@ if (process.stdin.isTTY) {
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.setEncoding('utf-8');
-  process.stdin.on('data', (key: string) => {
+  process.stdin.on('data', (chunk: string) => {
+    // CCMONITOR_KEYLOG=<file> records raw key chunks (debugging key bindings in odd terminals).
+    if (process.env.CCMONITOR_KEYLOG) {
+      try { appendFileSync(process.env.CCMONITOR_KEYLOG, JSON.stringify({ key: chunk, view }) + '\n'); } catch { /* ignore */ }
+    }
+    // A burst (paste, slow terminal) can deliver several keys in one chunk: handle each.
+    for (const key of splitKeys(chunk)) handleKey(key);
+  });
+}
+
+function handleKey(key: string): void {
+  {
     switch (key) {
       case 'q':
       case '\x03':
@@ -243,7 +256,7 @@ if (process.stdin.isTTY) {
         if (!toggleSection(key)) return;
     }
     draw();
-  });
+  }
 }
 
 process.on('SIGINT', shutdown);

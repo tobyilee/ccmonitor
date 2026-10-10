@@ -49,6 +49,7 @@ No external UI framework — raw ANSI escape codes to stdout. Parsing is split i
 - **views/sessions.ts** — pure row builder for the session picker. `paths.ts` holds `CLAUDE_DIR` (override with `CCMONITOR_CLAUDE_DIR`).
 - **types.ts** — All TypeScript interfaces. `SessionState` is the central data structure; `TranscriptEntry` models the JSONL schema.
 - **ui.ts** — Pure rendering. The dashboard is header + `SECTIONS` (each a `Section {id, key, title, render}`) + footer; `renderDashboardLines` / `renderRecapViewLines` / `renderBackgroundViewLines` / `renderInfoViewLines` / `renderSessionsViewLines` return `string[]`; `render()` writes to stdout. Adding a panel = appending to `SECTIONS`. Handles CJK fullwidth and emoji widths. No state mutation.
+- **keys.ts** — `splitKeys`: splits a stdin chunk into single keys (escape sequences whole). `CCMONITOR_KEYLOG=<file>` logs raw chunks.
 - **unknownFields.ts** — Appends unknown kinds to `~/.claude/ccmonitor-unknown-fields.log`.
 
 ### Key Design Decisions

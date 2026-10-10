@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-10-10
+
+### Fixed
+- **Burst key input.** A terminal can deliver several keystrokes in one stdin chunk (paste, or keys typed while the screen was being written). The chunk used to match no binding and was dropped; it is now split into single keys with escape sequences kept whole (`src/keys.ts`). Found while driving the TUI in a pseudo-terminal with `expect`.
+
+### Added
+- `CCMONITOR_KEYLOG=<file>` appends each raw stdin chunk and the current view, for debugging key bindings in unusual terminals.
+
 ## [1.9.0] - 2026-10-10
 
 ### Added

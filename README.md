@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.9.0**
+**Version: 1.9.1**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
