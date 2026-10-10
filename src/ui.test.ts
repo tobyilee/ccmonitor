@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSy
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { loadUiPrefs, saveUiPrefs } from './uiPrefs.js';
+import { normalizeGolden } from '../scripts/update-golden.js';
 import { parseTranscriptLines, computeDerived } from './parser.js';
 import {
   displayWidth, wordWrap, stripAnsi, truncateToWidth, formatDurationCompact,
@@ -195,7 +196,7 @@ describe.skipIf(!existsSync(join(FIX, 'golden')))('golden renders', () => {
     const [name, width] = f.replace(/\.txt$/, '').split('.');
     test(`${name} at ${width} columns matches fixtures/golden/${f}`, () => {
       const s = loadState(name!);
-      const got = renderDashboardLines(s, [], { now: NOW, width: Number(width) }).map(stripAnsi).join('\n') + '\n';
+      const got = normalizeGolden(renderDashboardLines(s, [], { now: NOW, width: Number(width) }).map(stripAnsi).join('\n') + '\n');
       const want = readFileSync(join(dir, f), 'utf-8');
       expect(got).toBe(want);
     });

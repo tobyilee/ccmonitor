@@ -1,4 +1,4 @@
- Claude Code Monitor v1.7.0                                                                05:00:00 
+ Claude Code Monitor vX.Y.Z                                                                05:00:00 
  /Users/dev/workspace/work/bmx/bzflow [main]
  Session:⌨ compacti·merry-enchanting-tarjan Model:unknown Ctx:0% Age:2d 1h Idle:1d 19h
  Mode:auto RC●
