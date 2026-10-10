@@ -27,6 +27,8 @@ import { loadProcessMemMb } from './loaders/process.js';
 import { loadScratchpadTasks } from './loaders/scratchpad.js';
 import { loadPreviousCost } from './loaders/globalConfig.js';
 import { loadModelCatalog } from './loaders/modelCatalog.js';
+import { loadPlanFile } from './loaders/plans.js';
+import { loadFeedbackDrafts } from './loaders/feedback.js';
 import { fileUnknownLogger } from './unknownFields.js';
 
 export { extractRealUserPrompt, processEntry, compareVersions } from './entry.js';
@@ -141,6 +143,8 @@ export function enrichSessionState(parsed: SessionState, opts: EnrichOptions = {
   state.effortLevel = state.effortLevel ?? loadEffortLevel(realCwd);
   loadScratchpadTasks(state.backgroundTasks);
   state.modelCatalog = loadModelCatalog();
+  state.links.plan = loadPlanFile(state.slug);
+  state.links.feedbackDrafts = loadFeedbackDrafts(state.sessionId);
   if (!state.cost && !opts.skipLive) state.cost = loadPreviousCost(realCwd);
 
   if (!opts.skipLive) {

@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.7.0**
+**Version: 1.8.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -18,7 +18,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
  Sess:3 (+●api-f3, 🖥○docs-a1) CC:v2.1.296
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
  Cost:$1.03 API:1m23s Tools:1.3s +12/-3 opus-4-6:$1.03
- Rate:8.2K/min Compact:1 (auto 180.2K→14.1K) Peak:245.3K ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
+ Rate:8.2K/min Compact:1 (auto 180.2K→14.1K) Peak:245.3K Think:4.9s ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
  Quota 5h:████░░░░░░ 42% (2h 15m) 7d:██░░░░░░░░ 18% (5d 3h)
 ┌─ Last Prompt  17:17:45 ─────────────────────────────────────────────────────┐
 │ add a feature to show git branch next to the current path, and adjust the   │
@@ -44,9 +44,14 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ ● /commit (Fix login bug)  3s                                               │
 │   /oh-my-claudecode:plan at 17:15:02                                        │
 │   /deep-interview at 17:10:44                                               │
+│ frontend-design attributed:6                                                │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Hooks ─────────────────────────────────────────────────────────────────────┐
 │ PreToolUse:37 Stop:3 SessionStart:1  errors:0                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌─ Links ─────────────────────────────────────────────────────────────────────┐
+│ PR #42 you/my-project                                                       │
+│ Plan my-project-swift-river.md (12 KB)                                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Teams ─────────────────────────────────────────────────────────────────────┐
 │ research-team (3)                                                           │
@@ -68,7 +73,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ change 17:18:02  ~/.claude/projects/-Users-you-workspace/abc123.jsonl       │
 │ add    17:17:58  ~/.claude/tasks/abc123/task-42.json                        │
 └─────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh c:recap b:background d:denials i:info n:next | auto 2s
+ q:quit r:refresh c:recap b:background d:denials i:info n:next | auto 2s hidden:9
 ```
 
 ### Visual highlights
@@ -82,6 +87,10 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Cost line** — total and per-model cost, API time, tool time and lines added/removed from the transcript's `cost-state` entry; `(prev session)` when it falls back to `~/.claude.json`.
 - **Denied strip** — count of rejected tool calls by reason inside the Tools box; `d` expands the last 5 with the blocking rule.
 - **Hooks** — per-event hook run counts, non-zero exits, and a `STOP BLOCKED` badge when a Stop hook prevented the turn from ending.
+- **Links** — the session's pull requests, Artifacts, plan file and feedback drafts; URLs in the `i` view.
+- **Queue chip** — `Queue:N` while prompts wait behind the running turn, with the next one previewed under Last Prompt.
+- **Attribution** — the Skill box shows how many responses ran under each skill or plugin; an `MCP` box counts calls per MCP server; `Think:4.9s` is the mean thinking time per response, `Advisor:…` counts advisor calls, `Fast` marks fast mode.
+- **Error strip** — a red line appears under the header when the last three turns saw an API error, an interrupt or an aborted stream.
 - **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle, grey `?`=status older than 10 minutes. `🖥` marks Claude Desktop sessions. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
 - **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
@@ -156,6 +165,7 @@ bun run start <sessionId>
 - `b` — full-screen Background view with the last 20 lines of each task's output file; same scroll keys
 - `i` — full-screen Info view: registry fields, Remote Control / PR / artifact URLs, compactions, cost per model, model catalog
 - `d` — expand/collapse the denial list under Tools
+- `1`–`9`, `0` — hide/show a panel (1 Last Prompt, 2 Recap, 3 Tools, 4 Background, 5 Skill, 6 Hooks, 7 Links, 8 Teams, 9 Memory, 0 Files); saved in `~/.claude/ccmonitor-ui.json`
 - `r` — force refresh (also clears any switched-session view)
 - `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
 - `Esc` — back to the dashboard
@@ -186,9 +196,11 @@ bun run build    # outputs dist/ccmonitor
 | **Recap** | Claude Code's native recap (`CC:`), the Korean recap section or first lines of the final reply, `now:` narration while a turn is open |
 | **Tools** | Tool call counts, sorted by frequency; `Denied:N` strip when tool calls were rejected |
 | **Hooks** | Hook runs per event, errors, `STOP BLOCKED` badge (shown when the session has hook activity) |
+| **MCP** | Calls per MCP server (shown when any MCP tool was used) |
+| **Links** | PRs, Artifacts, plan file, feedback drafts (shown when any exist) |
 | **Background** | Async agents, background Bash commands and Monitors with status, elapsed, exit code, model (replaces Subagents when present) |
 | **Subagents** | Running/completed agents with type, duration, description (when no background tasks exist) |
-| **Skill** | Active skill with elapsed time, last completed skill, history |
+| **Skill** | Active skill with elapsed time, last completed skill, history, attributed response counts per skill |
 | **Teams** | Team names and member lists |
 | **Tasks** | Task subjects with status icons (hidden when empty; task tools are off on Claude 5 models) |
 | **Memory** | Auto-memory state: MEMORY.md size, topic count, category breakdown, recent topics |

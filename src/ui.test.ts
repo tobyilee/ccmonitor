@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
+import { loadUiPrefs, saveUiPrefs } from './uiPrefs.js';
 import { parseTranscriptLines, computeDerived } from './parser.js';
 import {
   displayWidth, wordWrap, stripAnsi, truncateToWidth, formatDurationCompact,
   renderDashboardLines, renderRecapViewLines, renderBackgroundViewLines, renderInfoViewLines, statusDot, entrypointIcon,
+  SECTIONS, sectionForKey,
 } from './ui.js';
 import type { SessionState } from './types.js';
 
@@ -182,5 +185,82 @@ describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', ()
     expect(entrypointIcon('cli')).toBe('⌨');
     expect(entrypointIcon('claude-desktop')).toBe('🖥');
     expect(entrypointIcon(null)).toBe('');
+  });
+});
+
+describe.skipIf(!existsSync(join(FIX, 'golden')))('golden renders', () => {
+  const dir = join(FIX, 'golden');
+  const files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.txt')) : [];
+  for (const f of files) {
+    const [name, width] = f.replace(/\.txt$/, '').split('.');
+    test(`${name} at ${width} columns matches fixtures/golden/${f}`, () => {
+      const s = loadState(name!);
+      const got = renderDashboardLines(s, [], { now: NOW, width: Number(width) }).map(stripAnsi).join('\n') + '\n';
+      const want = readFileSync(join(dir, f), 'utf-8');
+      expect(got).toBe(want);
+    });
+  }
+});
+
+describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('sections (T3.1)', () => {
+  test('a collapsed section is omitted and the line count drops by its height', () => {
+    const s = loadState('recap-basic');
+    const full = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const toolsStart = full.findIndex(l => l.startsWith('┌─ Tools'));
+    const toolsEnd = full.findIndex((l, i) => i > toolsStart && l.startsWith('└'));
+    const height = toolsEnd - toolsStart + 1;
+    const collapsed = renderDashboardLines(s, [], { now: NOW, width: 100, collapsed: new Set(['tools']) }).map(stripAnsi);
+    expect(collapsed.some(l => l.startsWith('┌─ Tools'))).toBe(false);
+    expect(full.length - collapsed.length).toBe(height);
+    expect(collapsed[collapsed.length - 1]).toContain('hidden:3');
+  });
+
+  test('every section key is unique and maps back to its section', () => {
+    const keys = SECTIONS.map(s => s.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const s of SECTIONS) expect(sectionForKey(s.key)?.id).toBe(s.id);
+  });
+
+  test('ui prefs round-trip', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-prefs-'));
+    const file = join(dir, 'ui.json');
+    expect(loadUiPrefs(file).collapsed.size).toBe(0);
+    saveUiPrefs({ collapsed: new Set(['tools', 'memory']) }, file);
+    expect([...loadUiPrefs(file).collapsed].sort()).toEqual(['memory', 'tools']);
+    writeFileSync(file, '{not json');
+    expect(loadUiPrefs(file).collapsed.size).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe.skipIf(!existsSync(join(FIX, 'errors.jsonl')))('phase 3 panels', () => {
+  test('errors fixture renders one red strip; recap-basic renders none', () => {
+    const e = renderDashboardLines(loadState('errors'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    const strips = e.filter(l => l.startsWith(' ✗ '));
+    expect(strips).toHaveLength(1);
+    expect(strips[0]).toContain('API 403 oauth_not_allowed_for_organization');
+    const r = renderDashboardLines(loadState('recap-basic'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    expect(r.filter(l => l.startsWith(' ✗ '))).toHaveLength(0);
+  });
+
+  test('links box and MCP box render from the fixtures', () => {
+    const plain = renderDashboardLines(loadState('background'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    const links = plain.findIndex(l => l.startsWith('┌─ Links'));
+    expect(links).toBeGreaterThan(0);
+    expect(plain[links + 1]).toMatch(/^│ PR #\d+ bizmatrixx\/bzflow/);
+    const mcp = plain.findIndex(l => l.startsWith('┌─ MCP'));
+    expect(plain[mcp + 1]).toMatch(/Gmail ×2/);
+    expect(plain.some(l => l.includes('ego-browser attributed:'))).toBe(true);
+    expect(plain.some(l => / Think:\d+\.\ds/.test(l))).toBe(true);
+    const lk = renderDashboardLines(loadState('links'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    expect(lk.some(l => l.includes('Artifact "Kotlin 1.9 → 2.4"'))).toBe(true);
+  });
+
+  test('queue chip and preview footer', () => {
+    const s = loadState('recap-basic');
+    s.queue = { depth: 2, preview: 'second prompt text' };
+    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    expect(plain.some(l => l.includes('Queue:2'))).toBe(true);
+    expect(plain.some(l => l.includes('↳ next (2 queued): second prompt text'))).toBe(true);
   });
 });

@@ -123,7 +123,7 @@ export function createSessionState(ctx: ParseContext): SessionState {
       advisorCalls: 0, advisorModel: null,
       thinkingAvgMs: 0, thinkingSamples: 0, fastMode: false,
     },
-    errors: { api: [], interrupts: 0, abortedMidStream: 0 },
+    errors: { api: [], interrupts: 0, interruptTimes: [], abortedMidStream: 0 },
     editedFiles: new Map(),
   };
 }

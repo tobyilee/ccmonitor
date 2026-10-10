@@ -420,6 +420,8 @@ export interface AttributionInfo {
 export interface ErrorInfo {
   api: Array<{ status: number | null; code: string | null; text: string; time: Date | null }>;
   interrupts: number;
+  /** Times of the last 20 interrupts (for the "last 3 turns" window). */
+  interruptTimes: Date[];
   abortedMidStream: number;
 }
 

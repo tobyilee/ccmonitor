@@ -108,6 +108,18 @@ function bump(rec: Record<string, number>, key: string): void {
   rec[key] = (rec[key] ?? 0) + 1;
 }
 
+/** `claude_ai_Gmail` (tool prefix) and `claude.ai Gmail` (attribution) are the same server. */
+function normalizeServer(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** Count an MCP server under one display name even when it arrives in two spellings. */
+function bumpServer(rec: Record<string, number>, name: string): void {
+  const norm = normalizeServer(name);
+  const existing = Object.keys(rec).find(k => normalizeServer(k) === norm);
+  bump(rec, existing ?? name);
+}
+
 /**
  * Extract the actual user-typed prompt from a raw user-message text block.
  *
@@ -160,6 +172,8 @@ export function extractRealUserPrompt(text: string): string | null {
   if (/^[A-Za-z]+ hook success:/.test(cleaned)) return null;
   // Skip skill expansion bodies injected by Claude Code (they start with this preamble).
   if (cleaned.startsWith('Base directory for this skill:')) return null;
+  // Interrupt markers are written by Claude Code, not typed by the user.
+  if (/^\[Request interrupted by user/.test(cleaned)) return null;
   return cleaned;
 }
 
@@ -477,7 +491,7 @@ function handleAssistant(s: ParseSession, entry: TranscriptEntry, time: Date | n
     trackUsage(state, entry);
     if (entry.attributionSkill) bump(state.attribution.skills, entry.attributionSkill);
     if (entry.attributionPlugin) bump(state.attribution.plugins, entry.attributionPlugin);
-    if (entry.attributionMcpServer) bump(state.attribution.mcpServers, entry.attributionMcpServer);
+    if (entry.attributionMcpServer) bumpServer(state.attribution.mcpServers, entry.attributionMcpServer);
     if (entry.advisorModel) state.attribution.advisorModel = entry.advisorModel;
     const think = num(entry.thinkingDurationMs);
     if (think !== null) {
@@ -585,7 +599,7 @@ function trackToolUse(s: ParseSession, block: ContentBlock, ts: Date): void {
   if (state.currentTurn) state.currentTurn.toolCalls++;
 
   const mcp = /^mcp__(.+?)__/.exec(name);
-  if (mcp?.[1]) bump(state.attribution.mcpServers, mcp[1]);
+  if (mcp?.[1]) bumpServer(state.attribution.mcpServers, mcp[1]);
 
   const input = (block.input ?? {}) as Record<string, unknown>;
 
@@ -645,7 +659,11 @@ function handleUser(s: ParseSession, entry: TranscriptEntry, time: Date | null, 
   const blocks = contentBlocks(entry);
   const text = contentText(entry);
 
-  if (entry.interruptedMessageId) state.errors.interrupts++;
+  if (entry.interruptedMessageId) {
+    state.errors.interrupts++;
+    state.errors.interruptTimes.push(now);
+    if (state.errors.interruptTimes.length > 20) state.errors.interruptTimes.shift();
+  }
   // Human prompts carry the mode they were sent under (also a `permission-mode` entry on most versions).
   if (entry.permissionMode) state.permissions.mode = entry.permissionMode;
 

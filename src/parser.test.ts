@@ -35,7 +35,7 @@ function human(text: string, offsetSec: number, extra: Record<string, unknown> =
 }
 
 function assistantLine(
-  id: string, stop: string, blocks: unknown[], offsetSec: number, usage: Record<string, number> = { input_tokens: 10, output_tokens: 100 },
+  id: string, stop: string, blocks: unknown[], offsetSec: number, usage: Record<string, unknown> = { input_tokens: 10, output_tokens: 100 },
   extra: Record<string, unknown> = {},
 ): string {
   return JSON.stringify({
@@ -451,5 +451,94 @@ describe('permissions (T2.3)', () => {
     expect(s.permissions.decisions).toEqual({ accept: 1, reject: 1, byReason: { hook: 1, classifier: 1 }, rejectByReason: { hook: 1 } });
     expect(s.permissions.denials[0]).toMatchObject({ tool: 'Bash', kind: 'permission-rule' });
     expect(s.permissions.denials[0]?.reason).toContain('BLOCKED by scripts/hooks/guard-bash.sh');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 (v1.8): links, queue, attribution, errors
+// ---------------------------------------------------------------------------
+
+import { loadPlanFile, resolvePlansDir } from './loaders/plans.js';
+import { loadFeedbackDrafts } from './loaders/feedback.js';
+
+describe('plan and feedback loaders (T3.2)', () => {
+  test('plan file resolves under the default dir or settings.plansDirectory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-plans-'));
+    const plans = join(dir, 'plans');
+    const custom = join(dir, 'custom');
+    const settings = join(dir, 'settings.json');
+    for (const d of [plans, custom]) { require('fs').mkdirSync(d); }
+    writeFileSync(join(plans, 'slug-a.md'), '# plan\n'.repeat(100));
+    expect(loadPlanFile('slug-a', { settingsPath: settings, defaultDir: plans })).toEqual({ path: join(plans, 'slug-a.md'), bytes: 700 });
+    expect(loadPlanFile('missing', { settingsPath: settings, defaultDir: plans })).toBeNull();
+    expect(loadPlanFile(null, { settingsPath: settings, defaultDir: plans })).toBeNull();
+    writeFileSync(settings, JSON.stringify({ plansDirectory: custom }));
+    writeFileSync(join(custom, 'slug-b.md'), 'x');
+    expect(resolvePlansDir({ settingsPath: settings, defaultDir: plans })).toBe(custom);
+    expect(loadPlanFile('slug-b', { settingsPath: settings, defaultDir: plans })?.bytes).toBe(1);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('feedback drafts filter on source_session_id and skip malformed files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-fb-'));
+    writeFileSync(join(dir, 'a.json'), JSON.stringify({ title: 'Suggested `. ./.env` to load an SSH key', type: 'bug', source_session_id: 'sess-1', cwd: '/x' }));
+    writeFileSync(join(dir, 'b.json'), JSON.stringify({ title: 'Other', type: 'idea', source_session_id: 'sess-2' }));
+    writeFileSync(join(dir, 'c.json'), '{broken');
+    const mine = loadFeedbackDrafts('sess-1', dir);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.title.startsWith('Suggested')).toBe(true);
+    expect(loadFeedbackDrafts('sess-3', dir)).toEqual([]);
+    expect(loadFeedbackDrafts('sess-1', join(dir, 'nope'))).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('prompt queue (T3.3)', () => {
+  test('enqueue, enqueue, dequeue → depth 1 and preview is the second prompt', () => {
+    const q = (operation: string, content: string, t: number): string =>
+      JSON.stringify({ type: 'queue-operation', operation, content, timestamp: ts(t) });
+    const depths: number[] = [];
+    const lines = [human('go', 0), q('enqueue', 'first prompt', 1), q('enqueue', 'second prompt', 2), q('dequeue', '', 3)];
+    // stream line by line and assert the depth is never negative
+    for (let i = 1; i <= lines.length; i++) depths.push(parseTranscriptLines(lines.slice(0, i), ctx).queue.depth);
+    expect(depths).toEqual([0, 1, 2, 1]);
+    const s = parseTranscriptLines(lines, ctx);
+    expect(s.queue.preview).toBe('second prompt');
+    const drained = parseTranscriptLines([...lines, q('remove', '', 4), q('dequeue', '', 5)], ctx);
+    expect(drained.queue.depth).toBe(0);
+    expect(drained.queue.preview).toBeNull();
+  });
+});
+
+describe('attribution and telemetry (T3.4)', () => {
+  test('advisor server_tool_use, thinking average per message id, fast mode, mcp merge', () => {
+    const lines = [
+      human('go', 0),
+      assistantLine('m1', 'tool_use', [{ type: 'server_tool_use', id: 'srv1', name: 'advisor', input: {} }], 1, { input_tokens: 1, output_tokens: 1 }, { advisorModel: 'claude-opus-5-5', thinkingDurationMs: 4000, attributionSkill: 'ego-browser' }),
+      assistantLine('m1', 'tool_use', [{ type: 'text', text: 'x' }], 2, { input_tokens: 1, output_tokens: 1 }, { advisorModel: 'claude-opus-5-5', thinkingDurationMs: 4000, attributionSkill: 'ego-browser' }),
+      assistantLine('m2', 'tool_use', [{ type: 'tool_use', id: 't1', name: 'mcp__claude_ai_Gmail__search', input: {} }], 3, { input_tokens: 1, output_tokens: 1, speed: 'fast' }, { thinkingDurationMs: 2000, attributionMcpServer: 'claude.ai Gmail' }),
+      toolResult('t1', 4),
+    ];
+    const s = parseTranscriptLines(lines, ctx);
+    expect(s.attribution.advisorCalls).toBe(1);
+    expect(s.attribution.advisorModel).toBe('claude-opus-5-5');
+    expect(s.attribution.thinkingSamples).toBe(2);
+    expect(s.attribution.thinkingAvgMs).toBe(3000);
+    expect(s.attribution.fastMode).toBe(true);
+    expect(s.attribution.skills['ego-browser']).toBe(1);
+    expect(Object.keys(s.attribution.mcpServers)).toHaveLength(1);
+    expect(Object.values(s.attribution.mcpServers)[0]).toBe(2);
+  });
+});
+
+describe('errors (T3.5)', () => {
+  test('interrupted request is counted with its time', () => {
+    const s = parseTranscriptLines([
+      human('go', 0),
+      JSON.stringify({ type: 'user', uuid: 'i1', timestamp: ts(5), interruptedMessageId: 'msg_1', message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }),
+    ], ctx);
+    expect(s.errors.interrupts).toBe(1);
+    expect(s.errors.interruptTimes[0]?.toISOString()).toBe(ts(5));
+    expect(s.lastUserPrompt).toBe('go');
   });
 });

@@ -180,7 +180,11 @@ describe.skipIf(!have('background'))('background', () => {
     expect(s.queue.depth).toBe(Math.max(0, (ops['enqueue'] ?? 0) - (ops['dequeue'] ?? 0) - (ops['remove'] ?? 0)));
     // attribution / mcp
     for (const [skill, n] of Object.entries(e.attributionSkills)) expect(s.attribution.skills[skill]).toBe(n);
-    for (const server of Object.keys(e.mcpServers)) expect(s.attribution.mcpServers[server]).toBeGreaterThan(0);
+    const norm = (x: string): string => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const parsedServers = new Set(Object.keys(s.attribution.mcpServers).map(norm));
+    for (const server of Object.keys(e.mcpServers)) expect(parsedServers.has(norm(server))).toBe(true);
+    // both spellings of one server merge into one row
+    expect(Object.keys(s.attribution.mcpServers).map(norm)).toEqual([...parsedServers]);
     // edited files
     expect(s.editedFiles.size).toBeGreaterThanOrEqual(Object.keys(e.trackingPaths).length);
   });

@@ -43,6 +43,8 @@ export interface RenderOptions {
   height?: number;
   /** `d` toggles the expanded denial list under Tools. */
   showDenials?: boolean;
+  /** Section ids hidden with the number keys (persisted in ~/.claude/ccmonitor-ui.json). */
+  collapsed?: ReadonlySet<string>;
 }
 
 /** ⌨ for CLI sessions, 🖥 for Claude Desktop, nothing when unknown. */
@@ -73,6 +75,41 @@ function modeChip(state: SessionState): string {
     if (state.permissions.autoMode.bypass) flags.push('bypass');
   }
   return `${DIM} Mode:${RESET}${color}${mode}${flags.length ? `(${flags.join(',')})` : ''}${RESET}`;
+}
+
+function queueChip(state: SessionState): string {
+  return state.queue.depth > 0 ? ` ${DIM}Queue:${RESET}${FG.yellow}${state.queue.depth}${RESET}` : '';
+}
+
+/** `Advisor:opus-5-5 ×12  Think:4.9s  Fast` — only the parts that have data. */
+function telemetryChips(state: SessionState): string {
+  const a = state.attribution;
+  let out = '';
+  if (a.advisorCalls > 0) {
+    out += `${DIM} Advisor:${RESET}${FG.cyan}${shortModel(a.advisorModel) || '?'}${RESET} ${DIM}×${a.advisorCalls}${RESET}`;
+  }
+  if (a.thinkingSamples > 0) out += `${DIM} Think:${RESET}${(a.thinkingAvgMs / 1000).toFixed(1)}s`;
+  if (a.fastMode) out += ` ${FG.magenta}Fast${RESET}`;
+  return out;
+}
+
+/** Red one-liner when the last 3 turns saw an API error, interrupt or aborted stream. Zero lines otherwise. */
+export function errorStrip(state: SessionState): string | null {
+  const e = state.errors;
+  if (e.api.length === 0 && e.interrupts === 0 && e.abortedMidStream === 0) return null;
+  const turnStarts = [...state.turns.map(t => t.startedAt), ...(state.currentTurn ? [state.currentTurn.startedAt] : [])];
+  const since = turnStarts.length >= 3 ? turnStarts[turnStarts.length - 3]! : (turnStarts[0] ?? new Date(0));
+  const recentApi = e.api.filter(x => !x.time || x.time >= since);
+  const recentInterrupts = e.interruptTimes.filter(t => t >= since).length;
+  const parts: string[] = [];
+  for (const x of recentApi.slice(-2)) {
+    const when = x.time ? ` ${formatTime(x.time)}` : '';
+    parts.push(`API ${x.status ?? ''}${x.code ? ` ${x.code}` : ''}${when}`.replace(/\s+/g, ' ').trim());
+  }
+  if (recentInterrupts > 0) parts.push(`interrupted ×${recentInterrupts}`);
+  if (e.abortedMidStream > 0 && turnStarts.length < 3) parts.push(`aborted ×${e.abortedMidStream}`);
+  if (parts.length === 0) return null;
+  return ` ${FG.red}✗ ${parts.join(' · ')}${RESET}`;
 }
 
 function rcChip(state: SessionState): string {
@@ -360,7 +397,7 @@ function pathLine(state: SessionState | null, W: number): string {
 function turnLine(state: SessionState, now: Date): string | null {
   const t = state.currentTurn;
   const closed = state.turns.filter(x => x.durationMs !== null);
-  const chips = `${modeChip(state)}${rcChip(state)}`;
+  const chips = `${modeChip(state)}${rcChip(state)}${queueChip(state)}`;
   if (!t && closed.length === 0) return chips ? chips : null;
   if (t) {
     const elapsed = formatDurationCompact(now.getTime() - t.startedAt.getTime());
@@ -529,27 +566,258 @@ function renderSubagentsBox(state: SessionState, W: number, now: Date): string[]
   return out;
 }
 
-/** Pure dashboard renderer: returns the lines without writing to stdout. */
-export function renderDashboardLines(
-  state: SessionState | null,
-  fileEvents: Array<{ path: string; time: Date; event: string }>,
-  opts: RenderOptions = {},
-): string[] {
-  const W = opts.width ?? Math.max(20, (process.stdout.columns || 80) - 1);
-  const now = opts.now ?? new Date();
-  const lines: string[] = [];
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
 
-  lines.push(titleBar(W, now));
-  lines.push(pathLine(state, W));
+export interface SectionCtx {
+  state: SessionState;
+  fileEvents: Array<{ path: string; time: Date; event: string }>;
+  W: number;
+  now: Date;
+  opts: RenderOptions;
+}
 
-  if (!state) {
-    lines.push('');
-    lines.push(`${FG.yellow}  No active session found. Waiting for activity...${RESET}`);
-    lines.push('');
-    return lines;
+/** One collapsible dashboard box. `key` is the keyboard toggle (1-9, 0). */
+export interface Section {
+  id: string;
+  key: string;
+  title: string;
+  render: (ctx: SectionCtx) => string[];
+}
+
+function sectionPrompt({ state, W }: SectionCtx): string[] {
+  const out: string[] = [];
+  const promptTitle = state.lastUserPromptTime ? `Last Prompt  ${formatTime(state.lastUserPromptTime)}` : 'Last Prompt';
+  out.push(boxTop(promptTitle, W, FG.white));
+  if (state.lastUserPrompt) {
+    const MAX_CHARS = 500;
+    const chars = Array.from(state.lastUserPrompt);
+    const displayText = chars.length > MAX_CHARS ? chars.slice(0, MAX_CHARS - 3).join('') + '...' : state.lastUserPrompt;
+    const innerW = Math.max(10, W - 4);
+    for (const wrapped of wordWrap(displayText, innerW)) {
+      out.push(boxLine(`${FG.white}${wrapped}${RESET}`, W, FG.white));
+    }
+  } else {
+    out.push(boxLine(`${DIM}(no user prompt yet)${RESET}`, W, FG.white));
   }
+  if (state.queue.depth > 0 && state.queue.preview) {
+    const preview = state.queue.preview.replace(/\s+/g, ' ').trim();
+    out.push(boxLine(truncateAnsi(`${DIM}↳ next (${state.queue.depth} queued): ${preview}${RESET}`, W - 4), W, FG.white));
+  }
+  out.push(boxBottom(W, FG.white));
+  return out;
+}
 
-  // Session info
+function sectionTools({ state, W, opts }: SectionCtx): string[] {
+  const out: string[] = [];
+  const sortedTools = [...state.toolStats.values()].sort((a, b) => b.count - a.count);
+  out.push(boxTop('Tools', W, FG.cyan));
+  if (sortedTools.length === 0) {
+    out.push(boxLine(`${DIM}(no tools used yet)${RESET}`, W));
+  } else {
+    const chips: string[] = [];
+    const chipTexts: string[] = [];
+    for (const t of sortedTools) {
+      chips.push(`${FG.green}${t.name}${RESET}${DIM}:${t.count}${RESET}`);
+      chipTexts.push(`${t.name}:${t.count}`);
+    }
+    const innerW = W - 4;
+    let currentLine = '';
+    let currentLen = 0;
+    for (let i = 0; i < chips.length; i++) {
+      const chip = chips[i] ?? '';
+      const chipLen = (chipTexts[i] ?? '').length;
+      if (currentLen > 0 && currentLen + 1 + chipLen > innerW) {
+        out.push(boxLine(currentLine, W));
+        currentLine = chip;
+        currentLen = chipLen;
+      } else {
+        currentLine += (currentLen > 0 ? ' ' : '') + chip;
+        currentLen += (currentLen > 0 ? 1 : 0) + chipLen;
+      }
+    }
+    if (currentLen > 0) out.push(boxLine(currentLine, W));
+  }
+  const dec = state.permissions.decisions;
+  if (dec.reject > 0) {
+    const byReason = Object.entries(dec.rejectByReason)
+      .map(([r, n]) => `${r} ${n}`).join(', ');
+    const hint = opts.showDenials ? '' : ` ${DIM}(d)${RESET}`;
+    out.push(boxLine(`${FG.red}Denied:${dec.reject}${RESET}${byReason ? ` ${DIM}(${byReason})${RESET}` : ''}${hint}`, W));
+    if (opts.showDenials) {
+      for (const d of state.permissions.denials) {
+        const when = d.time ? `${formatTime(d.time)} ` : '';
+        out.push(boxLine(truncateAnsi(`${FG.red}✗${RESET} ${DIM}${when}${RESET}${FG.yellow}${d.tool ?? '?'}${RESET} ${DIM}${d.kind ?? ''}${RESET} ${d.reason}`, W - 4), W));
+      }
+    }
+  }
+  out.push(boxBottom(W, FG.cyan));
+  const mcp = Object.entries(state.attribution.mcpServers).sort((a, b) => b[1] - a[1]);
+  if (mcp.length > 0) {
+    out.push(boxTop('MCP', W, FG.cyan));
+    const chips = mcp.map(([server, n]) => `${FG.green}${server}${RESET}${DIM} ×${n}${RESET}`).join('  ');
+    out.push(boxLine(truncateAnsi(chips, W - 4), W));
+    out.push(boxBottom(W, FG.cyan));
+  }
+  return out;
+}
+
+function sectionBackground({ state, W, now }: SectionCtx): string[] {
+  // Background tasks replace the Subagents box when present
+  return state.backgroundTasks.size > 0 ? renderBackgroundBox(state, W, now) : renderSubagentsBox(state, W, now);
+}
+
+function sectionSkill({ state, W, now }: SectionCtx): string[] {
+  const out: string[] = [];
+  out.push(boxTop('Skill', W, FG.magenta));
+  if (state.activeSkill) {
+    const dur = formatDuration(now.getTime() - state.activeSkill.startTime.getTime());
+    const argsDisplay = state.activeSkill.args ? ` ${DIM}(${state.activeSkill.args.slice(0, 30)})${RESET}` : '';
+    out.push(boxLine(
+      `${statusIcon('running')} ${FG.yellow}/${state.activeSkill.name}${RESET}${argsDisplay} ${DIM}${dur}${RESET}`,
+      W, FG.magenta,
+    ));
+  } else if (state.lastCompletedSkill) {
+    const argsDisplay = state.lastCompletedSkill.args ? ` ${DIM}(${state.lastCompletedSkill.args.slice(0, 30)})${RESET}` : '';
+    out.push(boxLine(
+      `${FG.green}✔${RESET} ${FG.cyan}/${state.lastCompletedSkill.name}${RESET}${argsDisplay} ${DIM}at ${formatTime(state.lastCompletedSkill.endTime)}${RESET}`,
+      W, FG.magenta,
+    ));
+  } else {
+    out.push(boxLine(`${DIM}(no skills invoked)${RESET}`, W, FG.magenta));
+  }
+  const historyHead = state.skillHistory[0];
+  const historyStart = (state.lastCompletedSkill && historyHead
+    && historyHead.name === state.lastCompletedSkill.name
+    && historyHead.endTime === state.lastCompletedSkill.endTime) ? 1 : 0;
+  for (const h of state.skillHistory.slice(historyStart, historyStart + 5)) {
+    const hArgs = h.args ? ` (${h.args.slice(0, 20)})` : '';
+    out.push(boxLine(`${DIM}  /${h.name}${hArgs} at ${formatTime(h.endTime)}${RESET}`, W, FG.magenta));
+  }
+  // Attribution: how many assistant responses ran under each skill / plugin
+  const attributed = [
+    ...Object.entries(state.attribution.skills),
+    ...Object.entries(state.attribution.plugins).map(([k, v]) => [`plugin:${k}`, v] as [string, number]),
+  ].sort((a, b) => b[1] - a[1]);
+  if (attributed.length > 0) {
+    const chips = attributed.map(([name, n]) => `${FG.cyan}${name}${RESET}${DIM} attributed:${n}${RESET}`).join('  ');
+    out.push(boxLine(truncateAnsi(chips, W - 4), W, FG.magenta));
+  }
+  out.push(boxBottom(W, FG.magenta));
+  return out;
+}
+
+function sectionLinks({ state, W }: SectionCtx): string[] {
+  const l = state.links;
+  if (l.prs.length === 0 && l.artifacts.length === 0 && !l.plan && l.feedbackDrafts.length === 0) return [];
+  const out = [boxTop('Links', W, FG.blue)];
+  for (const pr of l.prs.slice(-3)) {
+    out.push(boxLine(truncateAnsi(`${FG.green}PR${RESET} #${pr.number} ${DIM}${pr.repository}${RESET}`, W - 4), W, FG.blue));
+  }
+  for (const a of l.artifacts) {
+    out.push(boxLine(truncateAnsi(`${FG.cyan}Artifact${RESET} "${a.title}"`, W - 4), W, FG.blue));
+  }
+  if (l.plan) {
+    const name = l.plan.path.split('/').pop() ?? l.plan.path;
+    out.push(boxLine(truncateAnsi(`${FG.magenta}Plan${RESET} ${name} ${DIM}(${Math.max(1, Math.round(l.plan.bytes / 1024))} KB)${RESET}`, W - 4), W, FG.blue));
+  }
+  for (const f of l.feedbackDrafts.slice(0, 2)) {
+    out.push(boxLine(truncateAnsi(`${FG.yellow}Feedback${RESET} ${DIM}${f.type}:${RESET} "${f.title}"`, W - 4), W, FG.blue));
+  }
+  out.push(boxBottom(W, FG.blue));
+  return out;
+}
+
+function sectionTeams({ state, W }: SectionCtx): string[] {
+  const out: string[] = [];
+  out.push(boxTop('Teams', W, FG.blue));
+  if (state.teams.length === 0) out.push(boxLine(`${DIM}(no teams)${RESET}`, W, FG.blue));
+  for (const team of state.teams) {
+    const memberCount = team.members.length > 0 ? ` ${DIM}(${team.members.length})${RESET}` : '';
+    out.push(boxLine(`${FG.yellow}${team.name}${RESET}${memberCount}`, W, FG.blue));
+    for (const member of team.members) out.push(boxLine(`${DIM}  ${member}${RESET}`, W, FG.blue));
+  }
+  out.push(boxBottom(W, FG.blue));
+  // Tasks (hidden when empty: task tools are off on Claude 5 models)
+  if (state.tasks.length > 0) {
+    out.push(boxTop('Tasks', W, FG.yellow));
+    for (const t of state.tasks.slice(-6)) {
+      out.push(boxLine(`${statusIcon(t.status)} ${pad(t.subject || '', W - 8)}`, W, FG.yellow));
+    }
+    out.push(boxBottom(W, FG.yellow));
+  }
+  return out;
+}
+
+function sectionMemory({ state, W, now }: SectionCtx): string[] {
+  const out: string[] = [];
+  out.push(boxTop('Memory', W, FG.blue));
+  if (!state.memory) {
+    out.push(boxLine(`${DIM}(no memory yet)${RESET}`, W, FG.blue));
+  } else {
+    const m = state.memory;
+    const indexPart = m.hasIndex
+      ? `${FG.cyan}MEMORY.md${RESET}${DIM} (${m.indexLines} lines)${RESET}`
+      : `${DIM}(no index)${RESET}`;
+    const topicPart = m.topicCount > 0
+      ? ` ${DIM}+${RESET} ${FG.yellow}${m.topicCount} topic${m.topicCount === 1 ? '' : 's'}${RESET}`
+      : '';
+    const ageSuffix = m.lastModified
+      ? ` ${DIM}last: ${formatDuration(now.getTime() - m.lastModified.getTime())} ago${RESET}`
+      : '';
+    out.push(boxLine(`${indexPart}${topicPart}${ageSuffix}`, W, FG.blue));
+    if (m.topicCount > 0) {
+      const cats = Object.entries(m.categoryBreakdown)
+        .sort((a, b) => b[1] - a[1])
+        .map(([cat, n]) => `${FG.magenta}${cat}${RESET}${DIM}:${n}${RESET}`)
+        .join(' ');
+      out.push(boxLine(`${DIM}  categories:${RESET} ${cats}`, W, FG.blue));
+    }
+    if (m.recentTopics.length > 0) {
+      const topics = m.recentTopics.map(t => `${FG.cyan}${t}${RESET}`).join(`${DIM}, ${RESET}`);
+      out.push(boxLine(`${DIM}  recent:${RESET} ${topics}`, W, FG.blue));
+    }
+  }
+  out.push(boxBottom(W, FG.blue));
+  return out;
+}
+
+function sectionFiles({ fileEvents, W }: SectionCtx): string[] {
+  const out: string[] = [];
+  out.push(boxTop('File Activity', W, FG.gray));
+  const recentEvents = fileEvents.slice(-8);
+  if (recentEvents.length === 0) out.push(boxLine(`${DIM}(watching for changes...)${RESET}`, W, FG.gray));
+  for (const ev of recentEvents) {
+    const evColor = ev.event === 'add' ? FG.green : ev.event === 'change' ? FG.yellow : FG.red;
+    const shortPath = ev.path.replace(process.env.HOME || '', '~').slice(-(W - 22));
+    out.push(boxLine(`${evColor}${pad(ev.event, 6)}${RESET} ${DIM}${formatTime(ev.time)}${RESET} ${shortPath}`, W, FG.gray));
+  }
+  out.push(boxBottom(W, FG.gray));
+  return out;
+}
+
+/** Dashboard boxes in display order. Toggle with the listed key; persisted in ~/.claude/ccmonitor-ui.json. */
+export const SECTIONS: Section[] = [
+  { id: 'prompt', key: '1', title: 'Last Prompt', render: sectionPrompt },
+  { id: 'recap', key: '2', title: 'Recap', render: ({ state, W }) => renderRecapBox(state, W) },
+  { id: 'tools', key: '3', title: 'Tools', render: sectionTools },
+  { id: 'background', key: '4', title: 'Background / Subagents', render: sectionBackground },
+  { id: 'skill', key: '5', title: 'Skill', render: sectionSkill },
+  { id: 'hooks', key: '6', title: 'Hooks', render: ({ state, W }) => renderHooksBox(state, W) },
+  { id: 'links', key: '7', title: 'Links', render: sectionLinks },
+  { id: 'teams', key: '8', title: 'Teams / Tasks', render: sectionTeams },
+  { id: 'memory', key: '9', title: 'Memory', render: sectionMemory },
+  { id: 'files', key: '0', title: 'File Activity', render: sectionFiles },
+];
+
+export function sectionForKey(key: string): Section | undefined {
+  return SECTIONS.find(s => s.key === key);
+}
+
+/** Header block: title bar, path, session / turn / sessions / tokens / cost / rate / quota lines. */
+function renderHeaderLines(state: SessionState, W: number, now: Date): string[] {
+  const lines: string[] = [];
   const sessionAge = formatDuration(now.getTime() - state.startTime.getTime());
   const sinceActivity = formatDuration(now.getTime() - state.lastActivity.getTime());
   const ctxPct = state.contextPercent;
@@ -624,7 +892,7 @@ export function renderDashboardLines(
   const peakStr = state.maxContextTokens > 0 ? `${FG.cyan}${formatTokens(state.maxContextTokens)}${RESET}` : `${DIM}--${RESET}`;
   const sparkW = Math.min(20, Math.max(0, W - 60));
   const spark = state.tokenHistory.length > 1 ? ` ${DIM}${sparkline(state.tokenHistory, sparkW)}${RESET}` : '';
-  lines.push(`${DIM} Rate:${RESET}${burnRateStr}${DIM} Compact:${RESET}${compactStr}${DIM} Peak:${RESET}${peakStr}${spark}`);
+  lines.push(`${DIM} Rate:${RESET}${burnRateStr}${DIM} Compact:${RESET}${compactStr}${DIM} Peak:${RESET}${peakStr}${telemetryChips(state)}${spark}`);
 
   // Rate limit quota
   if (state.rateLimit) {
@@ -649,179 +917,48 @@ export function renderDashboardLines(
       `${DIM} wk:${RESET}${bar(weekPct, weekColor)} ${weekColor}${weekPct.toFixed(0)}%${RESET}${resetCountdown(rl.weeklyResetsAt)}${staleTag}`,
     );
   }
+  const strip = errorStrip(state);
+  if (strip) lines.push(strip);
+  return lines;
+}
 
-  // Last User Prompt
-  const promptTitle = state.lastUserPromptTime ? `Last Prompt  ${formatTime(state.lastUserPromptTime)}` : 'Last Prompt';
-  lines.push(boxTop(promptTitle, W, FG.white));
-  if (state.lastUserPrompt) {
-    const MAX_CHARS = 500;
-    const chars = Array.from(state.lastUserPrompt);
-    const displayText = chars.length > MAX_CHARS ? chars.slice(0, MAX_CHARS - 3).join('') + '...' : state.lastUserPrompt;
-    const innerW = Math.max(10, W - 4);
-    for (const wrapped of wordWrap(displayText, innerW)) {
-      lines.push(boxLine(`${FG.white}${wrapped}${RESET}`, W, FG.white));
-    }
-  } else {
-    lines.push(boxLine(`${DIM}(no user prompt yet)${RESET}`, W, FG.white));
-  }
-  lines.push(boxBottom(W, FG.white));
-
-  // Recap
-  lines.push(...renderRecapBox(state, W));
-
-  // Tools
-  const sortedTools = [...state.toolStats.values()].sort((a, b) => b.count - a.count);
-  lines.push(boxTop('Tools', W, FG.cyan));
-  if (sortedTools.length === 0) {
-    lines.push(boxLine(`${DIM}(no tools used yet)${RESET}`, W));
-  } else {
-    const chips: string[] = [];
-    const chipTexts: string[] = [];
-    for (const t of sortedTools) {
-      chips.push(`${FG.green}${t.name}${RESET}${DIM}:${t.count}${RESET}`);
-      chipTexts.push(`${t.name}:${t.count}`);
-    }
-    const innerW = W - 4;
-    let currentLine = '';
-    let currentLen = 0;
-    for (let i = 0; i < chips.length; i++) {
-      const chip = chips[i] ?? '';
-      const chipLen = (chipTexts[i] ?? '').length;
-      if (currentLen > 0 && currentLen + 1 + chipLen > innerW) {
-        lines.push(boxLine(currentLine, W));
-        currentLine = chip;
-        currentLen = chipLen;
-      } else {
-        currentLine += (currentLen > 0 ? ' ' : '') + chip;
-        currentLen += (currentLen > 0 ? 1 : 0) + chipLen;
-      }
-    }
-    if (currentLen > 0) lines.push(boxLine(currentLine, W));
-  }
-  const dec = state.permissions.decisions;
-  if (dec.reject > 0) {
-    const byReason = Object.entries(dec.rejectByReason)
-      .map(([r, n]) => `${r} ${n}`).join(', ');
-    const hint = opts.showDenials ? '' : ` ${DIM}(d)${RESET}`;
-    lines.push(boxLine(`${FG.red}Denied:${dec.reject}${RESET}${byReason ? ` ${DIM}(${byReason})${RESET}` : ''}${hint}`, W));
-    if (opts.showDenials) {
-      for (const d of state.permissions.denials) {
-        const when = d.time ? `${formatTime(d.time)} ` : '';
-        lines.push(boxLine(truncateAnsi(`${FG.red}✗${RESET} ${DIM}${when}${RESET}${FG.yellow}${d.tool ?? '?'}${RESET} ${DIM}${d.kind ?? ''}${RESET} ${d.reason}`, W - 4), W));
-      }
-    }
-  }
-  lines.push(boxBottom(W, FG.cyan));
-
-  // Background tasks replace the Subagents box when present
-  if (state.backgroundTasks.size > 0) {
-    lines.push(...renderBackgroundBox(state, W, now));
-  } else {
-    lines.push(...renderSubagentsBox(state, W, now));
-  }
-
-  // Active Skill
-  lines.push(boxTop('Skill', W, FG.magenta));
-  if (state.activeSkill) {
-    const dur = formatDuration(now.getTime() - state.activeSkill.startTime.getTime());
-    const argsDisplay = state.activeSkill.args ? ` ${DIM}(${state.activeSkill.args.slice(0, 30)})${RESET}` : '';
-    lines.push(boxLine(
-      `${statusIcon('running')} ${FG.yellow}/${state.activeSkill.name}${RESET}${argsDisplay} ${DIM}${dur}${RESET}`,
-      W, FG.magenta,
-    ));
-  } else if (state.lastCompletedSkill) {
-    const argsDisplay = state.lastCompletedSkill.args ? ` ${DIM}(${state.lastCompletedSkill.args.slice(0, 30)})${RESET}` : '';
-    lines.push(boxLine(
-      `${FG.green}✔${RESET} ${FG.cyan}/${state.lastCompletedSkill.name}${RESET}${argsDisplay} ${DIM}at ${formatTime(state.lastCompletedSkill.endTime)}${RESET}`,
-      W, FG.magenta,
-    ));
-  } else {
-    lines.push(boxLine(`${DIM}(no skills invoked)${RESET}`, W, FG.magenta));
-  }
-  const historyHead = state.skillHistory[0];
-  const historyStart = (state.lastCompletedSkill && historyHead
-    && historyHead.name === state.lastCompletedSkill.name
-    && historyHead.endTime === state.lastCompletedSkill.endTime) ? 1 : 0;
-  for (const h of state.skillHistory.slice(historyStart, historyStart + 5)) {
-    const hArgs = h.args ? ` (${h.args.slice(0, 20)})` : '';
-    lines.push(boxLine(`${DIM}  /${h.name}${hArgs} at ${formatTime(h.endTime)}${RESET}`, W, FG.magenta));
-  }
-  lines.push(boxBottom(W, FG.magenta));
-
-  // Hooks (only when the transcript has hook_success attachments)
-  lines.push(...renderHooksBox(state, W));
-
-  // Teams
-  lines.push(boxTop('Teams', W, FG.blue));
-  if (state.teams.length === 0) lines.push(boxLine(`${DIM}(no teams)${RESET}`, W, FG.blue));
-  for (const team of state.teams) {
-    const memberCount = team.members.length > 0 ? ` ${DIM}(${team.members.length})${RESET}` : '';
-    lines.push(boxLine(`${FG.yellow}${team.name}${RESET}${memberCount}`, W, FG.blue));
-    for (const member of team.members) lines.push(boxLine(`${DIM}  ${member}${RESET}`, W, FG.blue));
-  }
-  lines.push(boxBottom(W, FG.blue));
-
-  // Tasks (hidden when empty: task tools are off on Claude 5 models)
-  if (state.tasks.length > 0) {
-    lines.push(boxTop('Tasks', W, FG.yellow));
-    for (const t of state.tasks.slice(-6)) {
-      lines.push(boxLine(`${statusIcon(t.status)} ${pad(t.subject || '', W - 8)}`, W, FG.yellow));
-    }
-    lines.push(boxBottom(W, FG.yellow));
-  }
-
-  // Memory
-  lines.push(boxTop('Memory', W, FG.blue));
-  if (!state.memory) {
-    lines.push(boxLine(`${DIM}(no memory yet)${RESET}`, W, FG.blue));
-  } else {
-    const m = state.memory;
-    const indexPart = m.hasIndex
-      ? `${FG.cyan}MEMORY.md${RESET}${DIM} (${m.indexLines} lines)${RESET}`
-      : `${DIM}(no index)${RESET}`;
-    const topicPart = m.topicCount > 0
-      ? ` ${DIM}+${RESET} ${FG.yellow}${m.topicCount} topic${m.topicCount === 1 ? '' : 's'}${RESET}`
-      : '';
-    const ageSuffix = m.lastModified
-      ? ` ${DIM}last: ${formatDuration(now.getTime() - m.lastModified.getTime())} ago${RESET}`
-      : '';
-    lines.push(boxLine(`${indexPart}${topicPart}${ageSuffix}`, W, FG.blue));
-    if (m.topicCount > 0) {
-      const cats = Object.entries(m.categoryBreakdown)
-        .sort((a, b) => b[1] - a[1])
-        .map(([cat, n]) => `${FG.magenta}${cat}${RESET}${DIM}:${n}${RESET}`)
-        .join(' ');
-      lines.push(boxLine(`${DIM}  categories:${RESET} ${cats}`, W, FG.blue));
-    }
-    if (m.recentTopics.length > 0) {
-      const topics = m.recentTopics.map(t => `${FG.cyan}${t}${RESET}`).join(`${DIM}, ${RESET}`);
-      lines.push(boxLine(`${DIM}  recent:${RESET} ${topics}`, W, FG.blue));
-    }
-  }
-  lines.push(boxBottom(W, FG.blue));
-
-  // File Activity
-  lines.push(boxTop('File Activity', W, FG.gray));
-  const recentEvents = fileEvents.slice(-8);
-  if (recentEvents.length === 0) lines.push(boxLine(`${DIM}(watching for changes...)${RESET}`, W, FG.gray));
-  for (const ev of recentEvents) {
-    const evColor = ev.event === 'add' ? FG.green : ev.event === 'change' ? FG.yellow : FG.red;
-    const shortPath = ev.path.replace(process.env.HOME || '', '~').slice(-(W - 22));
-    lines.push(boxLine(`${evColor}${pad(ev.event, 6)}${RESET} ${DIM}${formatTime(ev.time)}${RESET} ${shortPath}`, W, FG.gray));
-  }
-  lines.push(boxBottom(W, FG.gray));
-
-  // Footer
+function renderFooter(state: SessionState, opts: RenderOptions): string {
   const canSwitch = state.activeSessions.length > 1;
   const nextHint = canSwitch ? ` ${BOLD}n${RESET}${DIM}:next${RESET}` : '';
   const bgHint = state.backgroundTasks.size > 0 ? ` ${BOLD}b${RESET}${DIM}:background${RESET}` : '';
   const dHint = state.permissions.decisions.reject > 0 ? ` ${BOLD}d${RESET}${DIM}:denials${RESET}` : '';
+  const hidden = SECTIONS.filter(s => opts.collapsed?.has(s.id)).map(s => s.key);
+  const hiddenHint = hidden.length > 0 ? ` ${DIM}hidden:${hidden.join(',')}${RESET}` : '';
   const switchedBadge = opts.isSwitchedView
     ? ` ${BG.yellow}${FG.black}${BOLD} VIEWING ${RESET}${FG.yellow}${BOLD} press r to return${RESET}`
     : '';
-  lines.push(
-    `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${nextHint}${DIM} | auto 2s${RESET}${switchedBadge}`,
-  );
+  return `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${nextHint}${DIM} | auto 2s${RESET}${hiddenHint}${switchedBadge}`;
+}
+
+/** Pure dashboard renderer: header + every non-collapsed Section + footer. */
+export function renderDashboardLines(
+  state: SessionState | null,
+  fileEvents: Array<{ path: string; time: Date; event: string }>,
+  opts: RenderOptions = {},
+): string[] {
+  const W = opts.width ?? Math.max(20, (process.stdout.columns || 80) - 1);
+  const now = opts.now ?? new Date();
+  const lines: string[] = [titleBar(W, now), pathLine(state, W)];
+
+  if (!state) {
+    lines.push('');
+    lines.push(`${FG.yellow}  No active session found. Waiting for activity...${RESET}`);
+    lines.push('');
+    return lines;
+  }
+
+  lines.push(...renderHeaderLines(state, W, now));
+  const ctx: SectionCtx = { state, fileEvents, W, now, opts };
+  for (const section of SECTIONS) {
+    if (opts.collapsed?.has(section.id)) continue;
+    lines.push(...section.render(ctx));
+  }
+  lines.push(renderFooter(state, opts));
   // Header/footer lines are free text; keep them inside the terminal width.
   return lines.map(l => (/^[│┌└]/.test(stripAnsi(l)) ? l : truncateAnsi(l, W)));
 }

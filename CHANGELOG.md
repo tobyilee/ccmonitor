@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-10
+
+### Added
+- **Collapsible panels.** Every dashboard box is a `Section`; press its number to hide or show it: `1` Last Prompt, `2` Recap, `3` Tools, `4` Background/Subagents, `5` Skill, `6` Hooks, `7` Links, `8` Teams/Tasks, `9` Memory, `0` File Activity. The choice is saved in `~/.claude/ccmonitor-ui.json` and the footer lists the hidden numbers. Delete the file to restore every panel.
+- **Links box (F9).** `PR #158 bizmatrixx/bzflow` (from `pr-link`, de-duplicated per repository and number, last 3), `Artifact "Kotlin 1.9 → 2.4"` (from `frame-link`, last 3), `Plan clavis-link-robust-tide.md (12 KB)` when `<plansDirectory or ~/.claude/plans>/<slug>.md` exists, and `Feedback bug: "…"` for `SendFeedback` drafts whose `source_session_id` is this session. URLs are in the `i` view. The box is omitted when it would be empty.
+- **Prompt queue (F10).** `Queue:N` chip on the Turn line (`queue-operation` enqueue − dequeue − remove, never negative) and a dim `↳ next (N queued): …` footer in the Last Prompt box with the next queued prompt (task notifications are not previewed).
+- **Attribution and MCP (F11).** The Skill box ends with `ego-browser attributed:14` rows: how many assistant responses ran under each skill or plugin (`attributionSkill` / `attributionPlugin`, counted once per `message.id`). A small `MCP` box under Tools counts calls per server from `mcp__<server>__*` tool names and `attributionMcpServer` (two spellings of one server are merged). The Rate line gains `Advisor:opus-5-5 ×12` (from `server_tool_use` blocks named `advisor`), `Think:4.9s` (mean `thinkingDurationMs` per response) and a magenta `Fast` tag when `usage.speed` is `fast`.
+- **Error strip (F12).** One red line under the header when the last 3 turns contain an API error (`isApiErrorMessage`, with status and code), a user interrupt (`interruptedMessageId`) or an aborted stream: `✗ API 403 oauth_not_allowed_for_organization 02:31:10 · interrupted ×1`. Nothing is rendered otherwise. Synthetic error lines never become the session model.
+- **Golden renders.** `fixtures/golden/<name>.100.txt` hold the ANSI-stripped dashboard of three fixtures at 100 columns with a fixed clock; `bun test` compares against them. Regenerate on purpose with `bun run scripts/update-golden.ts` and read the diff.
+
+### Changed
+- `[Request interrupted by user]` markers no longer appear as the Last Prompt.
+- The `end_turn` skill-completion heuristic is kept (the plan proposed dropping it in favour of attribution); attribution is shown alongside instead, and the hook-state file remains an optional fast path.
+
 ## [1.7.0] - 2026-10-10
 
 ### Added

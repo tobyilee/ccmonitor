@@ -18,7 +18,8 @@ import {
   makeContext,
   type SessionLocation,
 } from './parser.js';
-import { render, cleanup, type View } from './ui.js';
+import { render, cleanup, sectionForKey, type View } from './ui.js';
+import { loadUiPrefs, saveUiPrefs } from './uiPrefs.js';
 import type { SessionState } from './types.js';
 
 const REFRESH_INTERVAL = 2000;
@@ -60,9 +61,20 @@ let selectedSession: { cwd: string; sessionId: string } | null = null;
 let view: View = 'dashboard';
 let scroll = 0;
 let showDenials = false;
+const uiPrefs = loadUiPrefs();
 
 function draw(): void {
-  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll, showDenials });
+  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed });
+}
+
+/** Number keys toggle a dashboard section; the choice is persisted. */
+function toggleSection(key: string): boolean {
+  const section = sectionForKey(key);
+  if (!section) return false;
+  if (uiPrefs.collapsed.has(section.id)) uiPrefs.collapsed.delete(section.id);
+  else uiPrefs.collapsed.add(section.id);
+  saveUiPrefs(uiPrefs);
+  return true;
 }
 
 function setView(next: View): void {
@@ -201,7 +213,7 @@ if (process.stdin.isTTY) {
         if (view !== 'dashboard') scroll = Math.max(0, scroll - 10);
         break;
       default:
-        return;
+        if (!toggleSection(key)) return;
     }
     draw();
   });
