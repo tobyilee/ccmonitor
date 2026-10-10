@@ -74,6 +74,7 @@ export function createSessionState(ctx: ParseContext): SessionState {
     lastUserPrompt: null,
     lastUserPromptTime: null,
     gitBranch: null,
+    gitStatus: null,
     editedFilesCount: 0,
     activeSessions: [],
     memory: null,

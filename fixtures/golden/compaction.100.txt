@@ -1,4 +1,4 @@
- Claude Code Monitor vX.Y.Z                                                                05:00:00 
+ Claude Code Monitor vX.Y.Z 05:00:00 
  /Users/dev/workspace/work/bmx/bzflow [main]
  Session:⌨ compacti·merry-enchanting-tarjan Model:unknown Ctx:0% Age:2d 1h Idle:1d 19h
  Mode:auto RC●
@@ -34,7 +34,7 @@
 ┌─ Memory ─────────────────────────────────────────────────────────────────────────────────────────┐
 │ (no memory yet)                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ File Activity ──────────────────────────────────────────────────────────────────────────────────┐
-│ (watching for changes...)                                                                        │
+┌─ Git Status ─────────────────────────────────────────────────────────────────────────────────────┐
+│ (not a git repository)                                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  q:quit r:refresh c:recap i:info | auto 2s

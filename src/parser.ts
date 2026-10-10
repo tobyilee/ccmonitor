@@ -18,6 +18,7 @@ import { loadTeams } from './loaders/teams.js';
 import { loadTasks } from './loaders/tasks.js';
 import { loadSkillHookState } from './loaders/skillHook.js';
 import { readGitBranch } from './loaders/git.js';
+import { loadGitStatus } from './loaders/gitStatus.js';
 import { loadEditedFilesCount } from './loaders/fileHistory.js';
 import { loadActiveSessions } from './loaders/sessions.js';
 import { loadMemoryInfo } from './loaders/memory.js';
@@ -140,6 +141,7 @@ export function enrichSessionState(parsed: SessionState, opts: EnrichOptions = {
   loadSkillHookState(state, nowMs);
   const realCwd = state.cwd ?? projectDirToRealCwd(state.projectDir);
   state.gitBranch = readGitBranch(realCwd) ?? state.gitBranch;
+  state.gitStatus = opts.skipLive ? null : loadGitStatus(realCwd, nowMs);
   state.editedFilesCount = loadEditedFilesCount(state.sessionId);
   state.memory = loadMemoryInfo(state.projectDir);
   state.effortLevel = state.effortLevel ?? loadEffortLevel(realCwd);

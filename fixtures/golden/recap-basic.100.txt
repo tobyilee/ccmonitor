@@ -1,4 +1,4 @@
- Claude Code Monitor vX.Y.Z                                                                05:00:00 
+ Claude Code Monitor vX.Y.Z 05:00:00 
  /Users/dev/workspace/work/bmx/bzflow2 [chore/pr-sync-main] — PR 생성 전 remote main 동기화
  Session:⌨ recap-ba Model:fable-5-1 Effort:high Ctx:9% Age:1h 38m Idle:1h 25m
  Turn:#2 done 30s · avg 2m49s · █▁ Mode:auto(bash-first)
@@ -37,10 +37,7 @@
 ┌─ Memory ─────────────────────────────────────────────────────────────────────────────────────────┐
 │ (no memory yet)                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ File Activity ──────────────────────────────────────────────────────────────────────────────────┐
-│ /Users/dev/.claude/CLAUDE.md  v1 03:29:00                                                        │
-│ CLAUDE.md  ext 03:28:51 (edited outside)                                                         │
-│ scripts/pr.test.sh  v1 03:27:42                                                                  │
-│ scripts/pr.sh  v1 03:27:02                                                                       │
+┌─ Git Status ─────────────────────────────────────────────────────────────────────────────────────┐
+│ (not a git repository)                                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  q:quit r:refresh c:recap d:denials i:info | auto 2s

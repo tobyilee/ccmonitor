@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.9.1**
+**Version: 1.10.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -69,10 +69,11 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │   categories: feedback:5 project:3 user:1                                   │
 │   recent: user_profile, feedback_naming, project_codex_model                │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌─ File Activity ─────────────────────────────────────────────────────────────┐
-│ src/ui.ts  v3 17:18:00                                                      │
-│ README.md  v1 17:16:12 (edited outside)                                     │
-│ change 17:18:02  ~/.claude/projects/-Users-you-workspace/abc123.jsonl       │
+┌─ Git Status ────────────────────────────────────────────────────────────────┐
+│ +1 new  ~2 modified  -0 deleted                                             │
+│  M src/ui.ts                                                                │
+│  M README.md                                                                │
+│ ?? src/loaders/gitStatus.ts                                                 │
 └─────────────────────────────────────────────────────────────────────────────┘
  q:quit r:refresh c:recap b:background d:denials i:info s:sessions n:next | auto 2s hidden:9
 ```
@@ -93,7 +94,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Attribution** — the Skill box shows how many responses ran under each skill or plugin; an `MCP` box counts calls per MCP server; `Think:4.9s` is the mean thinking time per response, `Advisor:…` counts advisor calls, `Fast` marks fast mode.
 - **Error strip** — a red line appears under the header when the last three turns saw an API error, an interrupt or an aborted stream.
 - **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle, grey `?`=status older than 10 minutes. `🖥` marks Claude Desktop sessions. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
-- **Files counter** — `Files:N` shows the number of unique files edited in this session (file-history directory and transcript `file-history-delta` / Write / Edit records; `~N` when the two sources disagree). The File Activity box lists those files with their version number and last edit time, marking files changed outside Claude Code.
+- **Files counter** — `Files:N` shows the number of unique files edited in this session (file-history directory and transcript `file-history-delta` / Write / Edit records; `~N` when the two sources disagree). The Git Status box at the bottom shows the working tree of the session cwd: `+N new  ~N modified  -N deleted` and the first 8 entries of `git status --porcelain`.
 - **Update awareness** — `update available (x.y.z)` appears after the Claude Code version when `.last-update-result.json` names a newer release; the `i` view shows the newest cached changelog bullets.
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
@@ -166,7 +167,7 @@ bun run start <sessionId>
 - `b` — full-screen Background view with the last 20 lines of each task's output file; same scroll keys
 - `i` — full-screen Info view: registry fields, Remote Control / PR / artifact URLs, compactions, cost per model, model catalog
 - `d` — expand/collapse the denial list under Tools
-- `1`–`9`, `0` — hide/show a panel (1 Last Prompt, 2 Recap, 3 Tools, 4 Background, 5 Skill, 6 Hooks, 7 Links, 8 Teams, 9 Memory, 0 Files); saved in `~/.claude/ccmonitor-ui.json`
+- `1`–`9`, `0` — hide/show a panel (1 Last Prompt, 2 Recap, 3 Tools, 4 Background, 5 Skill, 6 Hooks, 7 Links, 8 Teams, 9 Memory, 0 Git Status); saved in `~/.claude/ccmonitor-ui.json`
 - `r` — force refresh (also clears any switched-session view)
 - `s` — session picker: `j`/`k` move, `Enter` switch, `Esc`/`s` back
 - `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
@@ -178,7 +179,7 @@ bun run start <sessionId>
 ```bash
 bun test                                   # unit + fixture tests
 bun run typecheck                          # tsc --noEmit (strict)
-bun run src/index.ts --fixture fixtures/recap-basic.jsonl   # render a fixture, no watcher/registry
+bun run src/index.ts --fixture fixtures/recap-basic.jsonl   # render a fixture, no registry
 bun run scripts/bench-parse.ts <transcript.jsonl>           # full vs incremental parse timing
 ```
 
@@ -206,7 +207,7 @@ bun run build    # outputs dist/ccmonitor
 | **Teams** | Team names and member lists |
 | **Tasks** | Task subjects with status icons (hidden when empty; task tools are off on Claude 5 models) |
 | **Memory** | Auto-memory state: MEMORY.md size, topic count, category breakdown, recent topics |
-| **File Activity** | Files edited in this session (`path vN HH:MM:SS`, external edits marked), then recent `~/.claude/` watcher events |
+| **Git Status** | `git status` of the session cwd: `+N new  ~N modified  -N deleted`, then up to 8 `XY path` rows (`… N more`); `clean` or `(not a git repository)` |
 
 ## Faster Skill Detection (Optional)
 
@@ -245,7 +246,7 @@ ccmonitor is **fully decoupled** from Claude Code — it imports nothing from th
 3. Parses each JSONL entry for tool usage, skills, tokens, messages, model info, recap text, turn boundaries and background tasks. One API response can span several lines that share `message.id`; usage is counted once per id. Refreshes read only the bytes appended since the last one.
 4. Loads subagent metadata, team configs, task files and background-task output files from disk
 5. Renders ANSI box-drawing UI to stdout every 2 seconds
-6. Watches for file changes via [chokidar](https://github.com/paulmillr/chokidar) to show live file activity
+6. Runs `git status --porcelain` in the session cwd (at most every 5 s) for the Git Status box
 
 ### Data Extraction Details
 
@@ -391,18 +392,7 @@ Read from `~/.claude/projects/<sanitized-cwd>/memory/`, the auto-memory director
 
 The breakdown line trades vertical space for information density: a 9-topic memory compresses to one line like `feedback:5 project:3 user:1`, preserving the distribution without consuming the whole panel.
 
-#### File Activity
+#### Git Status
 
-The box lists the session's own edited files first (`path  vN  HH:MM:SS`, newest first, `(edited outside)` for external changes), from the sources above. Below them, [chokidar](https://github.com/paulmillr/chokidar) watches glob patterns across `~/.claude/` for real-time file system events (add/change/unlink); events are stored in a ring buffer (max 50) and the most recent few are shown dim.
+The bottom box runs `git -C <cwd> --no-optional-locks status --porcelain=v1 -z -uall` for the session's cwd (`src/loaders/gitStatus.ts`). Counting rules per `XY` code: `??` and a staged `A` are **new**; a `D` in either column is **deleted**; everything else (`M`, `T`, `R`, `C`, `U`) is **modified**. The summary row shows the three counts, then the first 8 entries in git order with their raw two-letter code, then `… N more`. The result is cached for 5 seconds per cwd; the first call is synchronous with a 2-second timeout, later refreshes run in the background so key input is never blocked. A cwd that is not inside a repository shows `(not a git repository)` and is retried every 30 seconds. `--no-optional-locks` keeps the monitor from touching the index lock while Claude Code works.
 
-### Watched File Paths
-
-| Glob Pattern | What It Captures |
-|---|---|
-| `projects/**/*.jsonl` | Session & subagent transcripts |
-| `projects/**/*.json` | Subagent metadata |
-| `tasks/**/*.json` | Task/TODO data |
-| `teams/**/*` | Team configs & inboxes |
-| `sessions/*.json` | Active session registry |
-| `file-history/**/*` | File change history |
-| `.omc/state/last-skill-complete.json` | Hook-based skill completion signal (optional) |

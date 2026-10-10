@@ -579,7 +579,6 @@ function renderSubagentsBox(state: SessionState, W: number, now: Date): string[]
 
 export interface SectionCtx {
   state: SessionState;
-  fileEvents: Array<{ path: string; time: Date; event: string }>;
   W: number;
   now: Date;
   opts: RenderOptions;
@@ -790,29 +789,35 @@ function sectionMemory({ state, W, now }: SectionCtx): string[] {
   return out;
 }
 
-function sectionFiles({ state, fileEvents, W }: SectionCtx): string[] {
+const GIT_MAX_ROWS = 8;
+
+function gitKindColor(kind: 'added' | 'modified' | 'deleted'): string {
+  return kind === 'added' ? FG.green : kind === 'deleted' ? FG.red : FG.yellow;
+}
+
+/** `+N new  ~N modified  -N deleted` with zero groups dimmed; `clean` when nothing changed. */
+export function gitSummary(g: { added: number; modified: number; deleted: number }): string {
+  if (g.added + g.modified + g.deleted === 0) return `${FG.green}clean${RESET}`;
+  const part = (n: number, sign: string, label: string, color: string): string =>
+    n > 0 ? `${color}${BOLD}${sign}${n}${RESET}${color} ${label}${RESET}` : `${DIM}${sign}0 ${label}${RESET}`;
+  return [part(g.added, '+', 'new', FG.green), part(g.modified, '~', 'modified', FG.yellow), part(g.deleted, '-', 'deleted', FG.red)].join('  ');
+}
+
+function sectionGit({ state, W }: SectionCtx): string[] {
   const out: string[] = [];
-  out.push(boxTop('File Activity', W, FG.gray));
-  // Session's own edits: path  vN  HH:MM:SS, newest first
-  const edited = [...state.editedFiles.values()]
-    .sort((a, b) => (b.lastEdit?.getTime() ?? 0) - (a.lastEdit?.getTime() ?? 0))
-    .slice(0, 6);
-  const cwd = state.cwd ?? '';
-  for (const f of edited) {
-    const rel = cwd && f.path.startsWith(cwd + '/') ? f.path.slice(cwd.length + 1) : f.path.replace(process.env.HOME || '', '~');
-    const ver = f.version > 0 ? `${DIM}v${f.version}${RESET}` : `${DIM}ext${RESET}`;
-    const when = f.lastEdit ? `${DIM}${formatTime(f.lastEdit)}${RESET}` : '';
-    const ext = f.external ? ` ${FG.yellow}(edited outside)${RESET}` : '';
-    const fixed = displayWidth(stripAnsi(`  ${ver} ${when}${ext}`));
-    out.push(boxLine(`${FG.white}${truncateToWidth(rel, Math.max(8, W - 4 - fixed))}${RESET}  ${ver} ${when}${ext}`, W, FG.gray));
+  out.push(boxTop('Git Status', W, FG.gray));
+  const g = state.gitStatus;
+  if (!g) {
+    out.push(boxLine(`${DIM}(not a git repository)${RESET}`, W, FG.gray));
+    out.push(boxBottom(W, FG.gray));
+    return out;
   }
-  const recentEvents = fileEvents.slice(-(edited.length > 0 ? 4 : 8));
-  if (edited.length === 0 && recentEvents.length === 0) out.push(boxLine(`${DIM}(watching for changes...)${RESET}`, W, FG.gray));
-  for (const ev of recentEvents) {
-    const evColor = ev.event === 'add' ? FG.green : ev.event === 'change' ? FG.yellow : FG.red;
-    const shortPath = ev.path.replace(process.env.HOME || '', '~').slice(-(W - 22));
-    out.push(boxLine(`${DIM}${evColor}${pad(ev.event, 6)}${RESET}${DIM} ${formatTime(ev.time)} ${shortPath}${RESET}`, W, FG.gray));
+  out.push(boxLine(gitSummary(g), W, FG.gray));
+  for (const f of g.files.slice(0, GIT_MAX_ROWS)) {
+    const color = gitKindColor(f.kind);
+    out.push(boxLine(`${color}${f.code}${RESET} ${truncateToWidth(f.path, Math.max(8, W - 7))}`, W, FG.gray));
   }
+  if (g.files.length > GIT_MAX_ROWS) out.push(boxLine(`${DIM}… ${g.files.length - GIT_MAX_ROWS} more${RESET}`, W, FG.gray));
   out.push(boxBottom(W, FG.gray));
   return out;
 }
@@ -828,7 +833,7 @@ export const SECTIONS: Section[] = [
   { id: 'links', key: '7', title: 'Links', render: sectionLinks },
   { id: 'teams', key: '8', title: 'Teams / Tasks', render: sectionTeams },
   { id: 'memory', key: '9', title: 'Memory', render: sectionMemory },
-  { id: 'files', key: '0', title: 'File Activity', render: sectionFiles },
+  { id: 'git', key: '0', title: 'Git Status', render: sectionGit },
 ];
 
 export function sectionForKey(key: string): Section | undefined {
@@ -969,7 +974,6 @@ function renderFooter(state: SessionState, opts: RenderOptions): string {
 /** Pure dashboard renderer: header + every non-collapsed Section + footer. */
 export function renderDashboardLines(
   state: SessionState | null,
-  fileEvents: Array<{ path: string; time: Date; event: string }>,
   opts: RenderOptions = {},
 ): string[] {
   const W = opts.width ?? Math.max(20, (process.stdout.columns || 80) - 1);
@@ -984,7 +988,7 @@ export function renderDashboardLines(
   }
 
   lines.push(...renderHeaderLines(state, W, now));
-  const ctx: SectionCtx = { state, fileEvents, W, now, opts };
+  const ctx: SectionCtx = { state, W, now, opts };
   for (const section of SECTIONS) {
     if (opts.collapsed?.has(section.id)) continue;
     lines.push(...section.render(ctx));
@@ -1192,7 +1196,6 @@ export function renderSessionsViewLines(state: SessionState | null, opts: Render
 
 export function render(
   state: SessionState | null,
-  fileEvents: Array<{ path: string; time: Date; event: string }>,
   opts: RenderOptions | boolean = {},
 ): void {
   const o: RenderOptions = typeof opts === 'boolean' ? { isSwitchedView: opts } : opts;
@@ -1205,7 +1208,7 @@ export function render(
         ? renderInfoViewLines(state, o)
         : view === 'sessions'
           ? renderSessionsViewLines(state, o)
-          : renderDashboardLines(state, fileEvents, o);
+          : renderDashboardLines(state, o);
   process.stdout.write(CLEAR + HIDE_CURSOR + lines.join('\n') + '\n');
 }
 

@@ -4,10 +4,9 @@
  *
  * Usage:
  *   ccmonitor [sessionId]
- *   ccmonitor --fixture fixtures/<name>.jsonl   # parse a fixture, no watcher / registry
+ *   ccmonitor --fixture fixtures/<name>.jsonl   # parse a fixture, no registry
  */
 
-import { watch, type FSWatcher } from 'chokidar';
 import { appendFileSync } from 'fs';
 import { join, resolve, dirname, basename } from 'path';
 import {
@@ -45,15 +44,6 @@ for (let i = 0; i < argv.length; i++) {
 }
 const FIXTURE_MODE = fixturePath !== null;
 
-// File events ring buffer
-const MAX_FILE_EVENTS = 50;
-const fileEvents: Array<{ path: string; time: Date; event: string }> = [];
-
-function addFileEvent(path: string, event: string): void {
-  fileEvents.push({ path, time: new Date(), event });
-  if (fileEvents.length > MAX_FILE_EVENTS) fileEvents.shift();
-}
-
 // State
 let state: SessionState | null = null;
 let running = true;
@@ -68,7 +58,7 @@ let cursor = 0;
 const uiPrefs = loadUiPrefs();
 
 function draw(): void {
-  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed, cursor });
+  render(state, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed, cursor });
 }
 
 /** Enter in the session picker: switch to the highlighted session. */
@@ -146,35 +136,9 @@ function switchToNextSession(): void {
   refreshState();
 }
 
-// Setup file watcher (not in fixture mode)
-let watcher: FSWatcher | null = null;
-if (!FIXTURE_MODE) {
-  watcher = watch(
-    [
-      join(CLAUDE_DIR, 'projects', '**', '*.jsonl'),
-      join(CLAUDE_DIR, 'projects', '**', '*.json'),
-      join(CLAUDE_DIR, 'tasks', '**', '*.json'),
-      join(CLAUDE_DIR, 'teams', '**', '*'),
-      join(CLAUDE_DIR, 'sessions', '*.json'),
-      join(CLAUDE_DIR, 'file-history', '**', '*'),
-      join(CLAUDE_DIR, '.omc', 'state', 'last-skill-complete.json'),
-    ],
-    {
-      persistent: true,
-      ignoreInitial: true,
-      awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
-    },
-  );
-  watcher
-    .on('add', (path: string) => addFileEvent(path, 'add'))
-    .on('change', (path: string) => addFileEvent(path, 'change'))
-    .on('unlink', (path: string) => addFileEvent(path, 'unlink'));
-}
-
 function shutdown(): void {
   running = false;
   cleanup();
-  watcher?.close();
   process.exit(0);
 }
 

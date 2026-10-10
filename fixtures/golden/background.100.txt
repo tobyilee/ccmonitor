@@ -1,4 +1,4 @@
- Claude Code Monitor vX.Y.Z                                                                05:00:00 
+ Claude Code Monitor vX.Y.Z 05:00:00 
  /Users/dev/workspace/work/bmx/bzflow [main] — BzEngage 커넥터 이메일 캠페인
  Session:⌨ backgrou Model:fable-5-1 Effort:high Ctx:43% Age:1h 47m Idle:20m 48s
  Turn:#9 ⏱ 23m18s (open) tools:13 Mode:auto(bash-first) RC●
@@ -53,7 +53,7 @@
 ┌─ Memory ─────────────────────────────────────────────────────────────────────────────────────────┐
 │ (no memory yet)                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ File Activity ──────────────────────────────────────────────────────────────────────────────────┐
-│ /Users/dev/.claude/projects/-Users-dev-workspace-work-bmx-bzflow/…  v1 03:31:38 (edited outside) │
+┌─ Git Status ─────────────────────────────────────────────────────────────────────────────────────┐
+│ (not a git repository)                                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  q:quit r:refresh c:recap b:background d:denials i:info | auto 2s

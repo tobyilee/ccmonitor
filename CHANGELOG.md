@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-10-10
+
+### Added
+- **Git Status box.** The bottom dashboard box (key `0`) now shows the working tree of the session's cwd: `+N new  ~N modified  -N deleted`, then up to 8 `git status --porcelain` rows with their `XY` code (`?? new.ts`, ` M src/ui.ts`, ` D gone.ts`) and `… N more`. `clean` when nothing changed, `(not a git repository)` otherwise. `git status` runs at most every 5 seconds per cwd (first call synchronous with a 2 s timeout, later refreshes in the background) with `--no-optional-locks`.
+
+### Removed
+- **File Activity box.** The per-session edited-file list and the `~/.claude` watcher event list are gone; the header `Files:N` counter still shows how many files the session edited.
+- The chokidar watcher and the `chokidar` dependency. Nothing consumed its events besides the removed box; the 2-second refresh loop already redraws every panel.
+
 ## [1.9.1] - 2026-10-10
 
 ### Fixed

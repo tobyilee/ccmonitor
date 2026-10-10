@@ -443,6 +443,23 @@ export interface ModelCatalogInfo {
   fetchedAt: Date | null;
 }
 
+/** One entry of `git status --porcelain`. `code` is the raw two-letter `XY` status. */
+export interface GitStatusFile {
+  code: string;
+  /** Path relative to the repository root (new path for renames). */
+  path: string;
+  kind: 'added' | 'modified' | 'deleted';
+}
+
+/** Working-tree summary of the session cwd (see `src/loaders/gitStatus.ts`). */
+export interface GitStatusInfo {
+  added: number;
+  modified: number;
+  deleted: number;
+  /** All entries in git order. */
+  files: GitStatusFile[];
+}
+
 export interface UpdateInfo {
   /** Newest `version_to` from .last-update-result.json. */
   latest: string | null;
@@ -504,6 +521,8 @@ export interface SessionState {
   lastUserPromptTime: Date | null;
   /** Current git branch of the project cwd (or short SHA for detached HEAD). Null if not a git repo. */
   gitBranch: string | null;
+  /** `git status` of the project cwd: counts and files. Loader-filled; null when not a repository. */
+  gitStatus: GitStatusInfo | null;
   /** Count of unique files edited in this session (derived from ~/.claude/file-history/<sessionId>/). */
   editedFilesCount: number;
   /** All currently-alive Claude Code sessions (including this one), from ~/.claude/sessions/<pid>.json with PID liveness check. */

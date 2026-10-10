@@ -13,9 +13,14 @@ import { parseTranscriptLines, computeDerived } from '../src/parser.js';
 import { renderDashboardLines, stripAnsi } from '../src/ui.js';
 import pkg from '../package.json';
 
-/** Golden files must not change on every release: mask the version in the title bar. */
+/**
+ * Golden files must not change on every release: mask the version in the title
+ * bar and collapse the padding after it (a longer version string shifts the clock).
+ */
 export function normalizeGolden(text: string): string {
-  return text.split(`v${pkg.version}`).join('vX.Y.Z');
+  return text
+    .replace(/Claude Code Monitor v\d+\.\d+\.\d+ +/g, 'Claude Code Monitor vX.Y.Z ')
+    .split(`v${pkg.version}`).join('vX.Y.Z');
 }
 
 export const GOLDEN_NOW = new Date('2026-10-10T05:00:00.000Z');
@@ -28,7 +33,7 @@ export function goldenFor(name: string): string {
   const file = join(FIX, `${name}.jsonl`);
   const s = parseTranscriptLines(readFileSync(file, 'utf-8').split('\n'), { sessionId: name, projectDir: FIX, transcriptFile: file });
   computeDerived(s);
-  return normalizeGolden(renderDashboardLines(s, [], { now: GOLDEN_NOW, width: GOLDEN_WIDTH }).map(stripAnsi).join('\n') + '\n');
+  return normalizeGolden(renderDashboardLines(s, { now: GOLDEN_NOW, width: GOLDEN_WIDTH }).map(stripAnsi).join('\n') + '\n');
 }
 
 if (import.meta.main) {

@@ -76,11 +76,11 @@ describe.skipIf(!existsSync(FIX))('width sweep over fixtures', () => {
     for (const W of [80, 100, 140]) {
       test(`${name} at ${W} columns`, () => {
         const s = loadState(name);
-        assertFits(renderDashboardLines(s, [], { now: NOW, width: W }), W, name);
+        assertFits(renderDashboardLines(s, { now: NOW, width: W }), W, name);
         assertFits(renderRecapViewLines(s, { now: NOW, width: W, height: 40 }), W, `${name} recap view`);
         assertFits(renderBackgroundViewLines(s, { now: NOW, width: W, height: 40 }), W, `${name} background view`);
         assertFits(renderInfoViewLines(s, { now: NOW, width: W, height: 40 }), W, `${name} info view`);
-        assertFits(renderDashboardLines(s, [], { now: NOW, width: W, showDenials: true }), W, `${name} denials`);
+        assertFits(renderDashboardLines(s, { now: NOW, width: W, showDenials: true }), W, `${name} denials`);
       });
     }
   }
@@ -89,7 +89,7 @@ describe.skipIf(!existsSync(FIX))('width sweep over fixtures', () => {
 describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('recap panel content', () => {
   test('recap-basic shows CC line, final reply divider and three Korean lines', () => {
     const s = loadState('recap-basic');
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     const start = plain.findIndex(l => l.startsWith('┌─ Recap'));
     expect(start).toBeGreaterThan(0);
     const box = plain.slice(start, plain.findIndex((l, i) => i > start && l.startsWith('└')) + 1);
@@ -102,7 +102,7 @@ describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('recap panel conten
 
   test('turn-open shows the yellow open title and the now: line', () => {
     const s = loadState('turn-open');
-    const lines = renderDashboardLines(s, [], { now: NOW, width: 100 });
+    const lines = renderDashboardLines(s, { now: NOW, width: 100 });
     const plain = lines.map(stripAnsi);
     const titleIdx = plain.findIndex(l => l.startsWith('┌─ Recap  (turn open)'));
     expect(titleIdx).toBeGreaterThan(0);
@@ -113,7 +113,7 @@ describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('recap panel conten
 
   test('background box replaces subagents and counts running tasks', () => {
     const s = loadState('background');
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     const title = plain.find(l => l.startsWith('┌─ Background'));
     expect(title).toBeDefined();
     const running = [...s.backgroundTasks.values()].filter(t => t.status === 'running').length;
@@ -137,7 +137,7 @@ describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('recap panel conten
 describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', () => {
   test('cost fixture renders the Cost line with per-model parts', () => {
     const s = loadState('cost');
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     const line = plain.find(l => l.startsWith(' Cost:$'));
     expect(line).toBeDefined();
     expect(line).toContain('opus-5-5:$');
@@ -146,7 +146,7 @@ describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', ()
 
   test('compaction fixture shows the exact compaction detail', () => {
     const s = loadState('compaction');
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     expect(plain.some(l => l.includes('Compact:2 (manual 500.4K→12.1K)'))).toBe(true);
     expect(plain.some(l => l.includes('RC●'))).toBe(true);
     const info = renderInfoViewLines(s, { now: NOW, width: 100, height: 60 }).map(stripAnsi);
@@ -156,7 +156,7 @@ describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', ()
 
   test('background fixture shows Mode chip, Denied strip, Hooks box', () => {
     const s = loadState('background');
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     expect(plain.some(l => l.includes('Mode:auto(bash-first)'))).toBe(true);
     expect(plain.some(l => /^│ Denied:1 \(hook 1\) \(d\)/.test(l))).toBe(true);
     const hooks = plain.find(l => l.startsWith('┌─ Hooks'));
@@ -164,13 +164,13 @@ describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', ()
     const hooksBody = plain[plain.indexOf(hooks!) + 1] ?? '';
     expect(hooksBody).toMatch(/PreToolUse:\d+/);
     expect(hooksBody).toContain('errors:0');
-    const expanded = renderDashboardLines(s, [], { now: NOW, width: 100, showDenials: true }).map(stripAnsi);
+    const expanded = renderDashboardLines(s, { now: NOW, width: 100, showDenials: true }).map(stripAnsi);
     expect(expanded.some(l => l.includes('Bash permission-rule') && l.includes('BLOCKED by'))).toBe(true);
   });
 
   test('links fixture: desktop icon and custom title in the header', () => {
     const s = loadState('links');
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     expect(plain[1]).toContain('Kotlin 1.9에서 2.4로 마이그레이션 가이드');
     expect(plain[2]).toContain('Session:🖥 links');
     const info = renderInfoViewLines(s, { now: NOW, width: 100, height: 60 }).map(stripAnsi);
@@ -197,7 +197,7 @@ describe.skipIf(!existsSync(join(FIX, 'golden')))('golden renders', () => {
     const [name, width] = f.replace(/\.txt$/, '').split('.');
     test(`${name} at ${width} columns matches fixtures/golden/${f}`, () => {
       const s = loadState(name!);
-      const got = normalizeGolden(renderDashboardLines(s, [], { now: NOW, width: Number(width) }).map(stripAnsi).join('\n') + '\n');
+      const got = normalizeGolden(renderDashboardLines(s, { now: NOW, width: Number(width) }).map(stripAnsi).join('\n') + '\n');
       const want = readFileSync(join(dir, f), 'utf-8');
       expect(got).toBe(want);
     });
@@ -207,11 +207,11 @@ describe.skipIf(!existsSync(join(FIX, 'golden')))('golden renders', () => {
 describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('sections (T3.1)', () => {
   test('a collapsed section is omitted and the line count drops by its height', () => {
     const s = loadState('recap-basic');
-    const full = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const full = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     const toolsStart = full.findIndex(l => l.startsWith('┌─ Tools'));
     const toolsEnd = full.findIndex((l, i) => i > toolsStart && l.startsWith('└'));
     const height = toolsEnd - toolsStart + 1;
-    const collapsed = renderDashboardLines(s, [], { now: NOW, width: 100, collapsed: new Set(['tools']) }).map(stripAnsi);
+    const collapsed = renderDashboardLines(s, { now: NOW, width: 100, collapsed: new Set(['tools']) }).map(stripAnsi);
     expect(collapsed.some(l => l.startsWith('┌─ Tools'))).toBe(false);
     expect(full.length - collapsed.length).toBe(height);
     expect(collapsed[collapsed.length - 1]).toContain('hidden:3');
@@ -237,16 +237,16 @@ describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('sections (T3.1)', 
 
 describe.skipIf(!existsSync(join(FIX, 'errors.jsonl')))('phase 3 panels', () => {
   test('errors fixture renders one red strip; recap-basic renders none', () => {
-    const e = renderDashboardLines(loadState('errors'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    const e = renderDashboardLines(loadState('errors'), { now: NOW, width: 100 }).map(stripAnsi);
     const strips = e.filter(l => l.startsWith(' ✗ '));
     expect(strips).toHaveLength(1);
     expect(strips[0]).toContain('API 403 oauth_not_allowed_for_organization');
-    const r = renderDashboardLines(loadState('recap-basic'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    const r = renderDashboardLines(loadState('recap-basic'), { now: NOW, width: 100 }).map(stripAnsi);
     expect(r.filter(l => l.startsWith(' ✗ '))).toHaveLength(0);
   });
 
   test('links box and MCP box render from the fixtures', () => {
-    const plain = renderDashboardLines(loadState('background'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(loadState('background'), { now: NOW, width: 100 }).map(stripAnsi);
     const links = plain.findIndex(l => l.startsWith('┌─ Links'));
     expect(links).toBeGreaterThan(0);
     expect(plain[links + 1]).toMatch(/^│ PR #\d+ bizmatrixx\/bzflow/);
@@ -254,35 +254,59 @@ describe.skipIf(!existsSync(join(FIX, 'errors.jsonl')))('phase 3 panels', () => 
     expect(plain[mcp + 1]).toMatch(/Gmail ×2/);
     expect(plain.some(l => l.includes('ego-browser attributed:'))).toBe(true);
     expect(plain.some(l => / Think:\d+\.\ds/.test(l))).toBe(true);
-    const lk = renderDashboardLines(loadState('links'), [], { now: NOW, width: 100 }).map(stripAnsi);
+    const lk = renderDashboardLines(loadState('links'), { now: NOW, width: 100 }).map(stripAnsi);
     expect(lk.some(l => l.includes('Artifact "Kotlin 1.9 → 2.4"'))).toBe(true);
   });
 
   test('queue chip and preview footer', () => {
     const s = loadState('recap-basic');
     s.queue = { depth: 2, preview: 'second prompt text' };
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
     expect(plain.some(l => l.includes('Queue:2'))).toBe(true);
     expect(plain.some(l => l.includes('↳ next (2 queued): second prompt text'))).toBe(true);
   });
 });
 
 describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 4 panels', () => {
-  test('file activity lists edited files with version and time', () => {
+  test('git status box shows counts, rows, overflow, clean and null', () => {
     const s = loadState('background');
     s.editedFiles.set('/Users/dev/workspace/work/bmx/bzflow/src/a.kt', { path: '/Users/dev/workspace/work/bmx/bzflow/src/a.kt', version: 2, lastEdit: NOW, external: false });
     s.editedFilesCount = 1;
-    const plain = renderDashboardLines(s, [{ path: '/Users/dev/.claude/x.jsonl', time: NOW, event: 'change' }], { now: NOW, width: 100 }).map(stripAnsi);
-    const start = plain.findIndex(l => l.startsWith('┌─ File Activity'));
-    expect(plain[start + 1]).toMatch(/^│ src\/a\.kt\s+v2 05:00:00/);
-    expect(plain.slice(start).some(l => l.includes('change 05:00:00'))).toBe(true);
-    expect(plain.some(l => / Files:~2/.test(l))).toBe(true);
+    expect(renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi).some(l => / Files:~2/.test(l))).toBe(true);
+
+    const files = Array.from({ length: 10 }, (_, i) => ({ code: ' M', path: `src/very/long/path/segment/number/${i}/${'x'.repeat(60)}.ts`, kind: 'modified' as const }));
+    s.gitStatus = {
+      added: 2, modified: 10, deleted: 1,
+      files: [{ code: '??', path: 'new.ts', kind: 'added' }, { code: 'A ', path: 'staged.ts', kind: 'added' }, { code: ' D', path: 'gone.ts', kind: 'deleted' }, ...files],
+    };
+    for (const W of [80, 100, 140]) assertFits(renderDashboardLines(s, { now: NOW, width: W }), W, 'git');
+    const plain = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
+    const start = plain.findIndex(l => l.startsWith('┌─ Git Status'));
+    expect(start).toBeGreaterThan(0);
+    expect(plain[start + 1]).toMatch(/^│ \+2 new  ~10 modified  -1 deleted/);
+    expect(plain[start + 2]).toMatch(/^│ \?\? new\.ts/);
+    expect(plain[start + 3]).toMatch(/^│ A {2}staged\.ts/);
+    expect(plain[start + 4]).toMatch(/^│ {2}D gone\.ts/);
+    expect(plain[start + 9]).toMatch(/^│ {2}M src\/very\/long/);
+    expect(plain[start + 10]).toMatch(/^│ … 5 more/);
+    expect(plain[start + 11]).toMatch(/^└/);
+
+    s.gitStatus = { added: 0, modified: 0, deleted: 0, files: [] };
+    const clean = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
+    const c = clean.findIndex(l => l.startsWith('┌─ Git Status'));
+    expect(clean[c + 1]).toMatch(/^│ clean/);
+    expect(clean[c + 2]).toMatch(/^└/);
+
+    s.gitStatus = null;
+    const none = renderDashboardLines(s, { now: NOW, width: 100 }).map(stripAnsi);
+    expect(none.some(l => l.startsWith('│ (not a git repository)'))).toBe(true);
+    expect(none.some(l => l.startsWith('┌─ File Activity'))).toBe(false);
   });
 
   test('update available shows in the header and the info view', () => {
     const s = loadState('recap-basic');
     s.update = { latest: '9.9.9', available: true, changelog: { version: '9.9.9', bullets: ['one', 'two'] } };
-    const plain = renderDashboardLines(s, [], { now: NOW, width: 120 }).map(stripAnsi);
+    const plain = renderDashboardLines(s, { now: NOW, width: 120 }).map(stripAnsi);
     expect(plain.some(l => l.includes('update available (9.9.9)'))).toBe(true);
     const info = renderInfoViewLines(s, { now: NOW, width: 100, height: 80 }).map(stripAnsi);
     expect(info.some(l => l.includes('Claude Code update') && l.includes('available: 9.9.9'))).toBe(true);
