@@ -40,7 +40,7 @@ When the user says `upgrade`:
 
 No external UI framework — raw ANSI escape codes to stdout. Parsing is split into a pure layer and disk loaders:
 
-- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), keyboard (q/r/n/s/c/b/i/d/1-9/0/Enter/Esc/j/k), view state (`dashboard | recap | background | info | sessions`), collapsed-section prefs (`src/uiPrefs.ts` → `~/.claude/ccmonitor-ui.json`), 2-second refresh loop. Holds one `TranscriptReader` per transcript file.
+- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), keyboard (q/r/n/s/c/b/i/d/1-9/0/Enter/Esc/j/k; ↑/↓ on the dashboard change the refresh interval), view state (`dashboard | recap | background | info | sessions`), collapsed-section prefs (`src/uiPrefs.ts` → `~/.claude/ccmonitor-ui.json`), refresh loop (2 s default, 2–60 s, `src/refresh.ts`). Holds one `TranscriptReader` per transcript file.
 - **parser.ts** — Orchestration. `parseTranscriptLines(lines, ctx)` (pure), `enrichSessionState(state)` (runs the loaders on a copy), `TranscriptReader` (incremental tail reads; full reparse when the file shrinks or its first 64 bytes change), `locate*Session` helpers, `computeDerived`.
 - **entry.ts** — The pure per-entry state machine (`processEntry` + `handleSystem` / `handleAttachment` / `handleAssistant` / `handleUser` …). Groups assistant lines by `message.id`, opens/closes turns, tracks background tasks, recap text, hooks, permissions, cost, links, queue, attribution, errors. Reports unknown `type` / `system.subtype` / `attachment.type` values through `ctx.onUnknown`.
 - **state.ts** — `createSessionState`, `ParseMemo` (parser working memory), `ParseSession`.

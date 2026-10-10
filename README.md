@@ -8,7 +8,7 @@ Reads `~/.claude/` data files every 2 seconds and displays live activity — a r
 
 ## Screenshot
 
-The dashboard refreshes every 2 seconds and renders entirely with ANSI escape codes — no external UI framework. Here's what an active session looks like (colors are suggested in brackets; actual output uses ANSI):
+The dashboard refreshes every 2 seconds by default (`↑`/`↓` change the interval) and renders entirely with ANSI escape codes — no external UI framework. Here's what an active session looks like (colors are suggested in brackets; actual output uses ANSI):
 
 ```
  Claude Code Monitor                                                  17:18:00    [#1e3a8a bg, #ffffff bold]
@@ -75,7 +75,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │  M README.md                                                                │
 │ ?? src/loaders/gitStatus.ts                                                 │
 └─────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh c:recap b:background d:denials i:info s:sessions n:next | auto 2s hidden:9
+ q:quit r:refresh c:recap b:background d:denials i:info s:sessions n:next | auto 2s ↑↓ hidden:9
 ```
 
 ### Visual highlights
@@ -170,6 +170,7 @@ bun run start <sessionId>
 - `d` — expand/collapse the denial list under Tools
 - `1`–`9`, `0` — hide/show a panel (1 Last Prompt, 2 Recap, 3 Tools, 4 Background, 5 Skill, 6 Hooks, 7 Links, 8 Teams, 9 Memory, 0 Git Status); saved in `~/.claude/ccmonitor-ui.json`
 - `r` — force refresh (also clears any switched-session view)
+- `↑` / `↓` (dashboard) — make the auto-refresh interval 1 s longer / shorter; 2 s minimum, 60 s maximum, shown in the footer as `auto Ns`. Not saved between runs
 - `s` — session picker: `j`/`k` move, `Enter` switch, `Esc`/`s` back
 - `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
 - `Esc` — back to the dashboard
@@ -247,7 +248,7 @@ ccmonitor is **fully decoupled** from Claude Code — it imports nothing from th
 2. Finds the latest `.jsonl` transcript in `~/.claude/projects/<dir>/`
 3. Parses each JSONL entry for tool usage, skills, tokens, messages, model info, recap text, turn boundaries and background tasks. One API response can span several lines that share `message.id`; usage is counted once per id. Refreshes read only the bytes appended since the last one.
 4. Loads subagent metadata, team configs, task files and background-task output files from disk
-5. Renders ANSI box-drawing UI to stdout every 2 seconds
+5. Renders ANSI box-drawing UI to stdout every 2 seconds (default; `↑`/`↓` change it)
 6. Runs `git status --porcelain` in the session cwd (at most every 5 s) for the Git Status box
 
 ### Data Extraction Details

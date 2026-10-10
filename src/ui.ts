@@ -48,6 +48,8 @@ export interface RenderOptions {
   collapsed?: ReadonlySet<string>;
   /** Highlighted row in the session picker. */
   cursor?: number;
+  /** Auto-refresh interval shown in the footer (default 2000). */
+  refreshMs?: number;
 }
 
 /** ⌨ for CLI sessions, 🖥 for Claude Desktop, nothing when unknown. */
@@ -968,7 +970,7 @@ function renderFooter(state: SessionState, opts: RenderOptions): string {
   const switchedBadge = opts.isSwitchedView
     ? ` ${BG.yellow}${FG.black}${BOLD} VIEWING ${RESET}${FG.yellow}${BOLD} press r to return${RESET}`
     : '';
-  return `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${sHint}${nextHint}${DIM} | auto 2s${RESET}${hiddenHint}${switchedBadge}`;
+  return `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${sHint}${nextHint}${DIM} | auto ${Math.round((opts.refreshMs ?? 2000) / 1000)}s ${BOLD}↑↓${RESET}${hiddenHint}${switchedBadge}`;
 }
 
 /** Pure dashboard renderer: header + every non-collapsed Section + footer. */

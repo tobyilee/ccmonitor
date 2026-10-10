@@ -326,3 +326,13 @@ describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 4 panels', ()
     expect(plain.some(l => l.startsWith('▶ ○ 🖥 Kotlin 가이드') && l.includes('migrate kotlin please'))).toBe(true);
   });
 });
+
+describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('footer refresh interval', () => {
+  test('shows 2s by default and the chosen interval otherwise', () => {
+    const s = loadState('recap-basic');
+    const footer = (opts: { refreshMs?: number }) =>
+      stripAnsi(renderDashboardLines(s, { now: NOW, width: 100, ...opts }).at(-1) ?? '');
+    expect(footer({})).toContain('| auto 2s ↑↓');
+    expect(footer({ refreshMs: 7000 })).toContain('| auto 7s ↑↓');
+  });
+});

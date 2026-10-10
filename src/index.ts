@@ -22,9 +22,9 @@ import { render, cleanup, sectionForKey, type View } from './ui.js';
 import { sessionRows } from './views/sessions.js';
 import { loadUiPrefs, saveUiPrefs } from './uiPrefs.js';
 import { splitKeys } from './keys.js';
+import { REFRESH_DEFAULT_MS, stepRefreshMs } from './refresh.js';
 import type { SessionState } from './types.js';
 
-const REFRESH_INTERVAL = 2000;
 const PROJECT_CWD = process.cwd();
 
 // --- CLI args ---
@@ -56,9 +56,12 @@ let scroll = 0;
 let showDenials = false;
 let cursor = 0;
 const uiPrefs = loadUiPrefs();
+/** Auto-refresh interval; ↑/↓ on the dashboard change it (min 2 s). */
+let refreshMs = REFRESH_DEFAULT_MS;
+let tickTimer: ReturnType<typeof setTimeout> | null = null;
 
 function draw(): void {
-  render(state, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed, cursor });
+  render(state, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed, cursor, refreshMs });
 }
 
 /** Enter in the session picker: switch to the highlighted session. */
@@ -123,7 +126,7 @@ function refreshState(): void {
 
 /**
  * Cycle to the next live Claude Code session (from activeSessions, refreshed
- * every 2 s). No-op with fewer than two live sessions.
+ * on every tick). No-op with fewer than two live sessions.
  */
 function switchToNextSession(): void {
   if (!state || state.activeSessions.length < 2) return;
@@ -203,11 +206,13 @@ function handleKey(key: string): void {
       case '\x1b[B': // Down
         if (view === 'sessions') cursor++;
         else if (view !== 'dashboard') scroll++;
+        else if (key === '\x1b[B') setRefreshMs(stepRefreshMs(refreshMs, -1));
         break;
       case 'k':
       case '\x1b[A': // Up
         if (view === 'sessions') cursor = Math.max(0, cursor - 1);
         else if (view !== 'dashboard') scroll = Math.max(0, scroll - 1);
+        else if (key === '\x1b[A') setRefreshMs(stepRefreshMs(refreshMs, 1));
         break;
       case ' ':
       case '\x1b[6~': // PageDown
@@ -235,6 +240,18 @@ function tick(): void {
   if (!running) return;
   refreshState();
   draw();
-  setTimeout(tick, REFRESH_INTERVAL);
+  scheduleTick();
 }
-setTimeout(tick, REFRESH_INTERVAL);
+
+function scheduleTick(): void {
+  if (tickTimer) clearTimeout(tickTimer);
+  tickTimer = setTimeout(tick, refreshMs);
+}
+
+/** A new interval takes effect at once: the pending tick is rescheduled. */
+function setRefreshMs(ms: number): void {
+  if (ms === refreshMs) return;
+  refreshMs = ms;
+  scheduleTick();
+}
+scheduleTick();

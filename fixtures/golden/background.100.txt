@@ -56,4 +56,4 @@
 ┌─ Git Status ─────────────────────────────────────────────────────────────────────────────────────┐
 │ (not a git repository)                                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh c:recap b:background d:denials i:info | auto 2s
+ q:quit r:refresh c:recap b:background d:denials i:info | auto 2s ↑↓
