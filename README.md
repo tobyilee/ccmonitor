@@ -1,10 +1,10 @@
 # ccmonitor
 
-**Version: 1.5.0**
+**Version: 1.6.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
-Watches `~/.claude/` data files and displays live activity — tool usage, skills, subagents, teams, tasks, token consumption, and file changes.
+Watches `~/.claude/` data files and displays live activity — a recap of what Claude just did, turn timing, background agents and commands, tool usage, skills, token consumption, and file changes.
 
 ## Screenshot
 
@@ -13,7 +13,8 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ```
  Claude Code Monitor                                                  17:18:00    [#1e3a8a bg, #ffffff bold]
  /Users/you/workspace/my-project [main] — Add git branch to the header bar         [dim gray + magenta + cyan]
- Session:a1b2c3d4 Model:claude-opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
+ Session:a1b2c3d4 Model:opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
+ Turn:#7 done 4m02s · avg 2m10s · ▂▅▃▇▁
  Sess:3 (+●api-f3, ○docs-a1) CC:v2.1.220
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
  Rate:8.2K/min Compact:1 Peak:245.3K ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
@@ -22,12 +23,20 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ add a feature to show git branch next to the current path, and adjust the   │
 │ title bar color to be more readable                                         │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌─ Tools ─────────────────────────────────────────────────────────────────────┐
-│ Edit:15 ~1s Bash:12 ~2s Read:8 ~0s Grep:5 ~0s Agent:3 ~42s Skill:2 Write:1  │
+┌─ Recap  17:21:03 ───────────────────────────────────────────────────────────┐
+│ CC: You asked for a git branch in the header, so I read .git/HEAD and       │
+│ rendered it next to the cwd. Next, say pr to open the PR.                   │
+│ ── Final reply 17:18:00 (opus-4-6) ───────────────────────────────────────  │
+│ - 경로 옆에 현재 브랜치를 마젠타로 표시했습니다.                              │
+│ - 타이틀 바를 진한 남색(#1e3a8a) 배경으로 바꿨습니다.                         │
+│ … (+6 lines, press c)                                                       │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌─ Subagents ─────────────────────────────────────────────────────────────────┐
-│ ● Explore        1m 22s  Find auth middleware files                         │
-│ ✔ code-reviewer     42s  Review migration safety                            │
+┌─ Tools ─────────────────────────────────────────────────────────────────────┐
+│ Edit:15 Bash:12 Read:8 Grep:5 Agent:3 Skill:2 Write:1                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌─ Background  1 running ─────────────────────────────────────────────────────┐
+│ ● agent Explore "Find auth middleware files" 1m22s opus-4-6                 │
+│ ✓ bash  "Run the unit tests" exit 0 42s                                     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Skill ─────────────────────────────────────────────────────────────────────┐
 │ ● /commit (Fix login bug)  3s                                               │
@@ -54,13 +63,16 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ change 17:18:02  ~/.claude/projects/-Users-you-workspace/abc123.jsonl       │
 │ add    17:17:58  ~/.claude/tasks/abc123/task-42.json                        │
 └─────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh n:next session | auto 2s
+ q:quit r:refresh c:recap b:background n:next | auto 2s
 ```
 
 ### Visual highlights
 
 - **Title bar** — deep blue (`#1e3a8a`) background with bold pure-white (`#ffffff`) text. Uses 24-bit truecolor for deterministic rendering across terminal themes.
 - **Path line** — dim gray cwd (read from the transcript's per-entry `cwd` field, so paths containing `_` or `.` display correctly), the current git branch in magenta brackets (from `.git/HEAD`, with the transcript's `gitBranch` field as fallback), and the AI-generated session title in cyan — truncated CJK-aware to the terminal width.
+- **Recap** — `CC:` is Claude Code's own one-line session recap (`system/away_summary`, written a few minutes after a turn ends; disable with `/config`). Below the divider is the "Korean recap" section of Claude's last reply, or its first lines. While Claude is working the title turns yellow and a `now:` line shows the latest mid-turn narration. Press `c` for the full reply.
+- **Turn line** — elapsed time and tool calls of the open turn, or the last turn's duration, the average, and a sparkline of the last 10 turns (from `system/turn_duration`).
+- **Background** — async `Agent` runs, `run_in_background` Bash commands and Monitors with status, elapsed time, exit code and model. Replaces the Subagents box when present. Press `b` for each task's output tail.
 - **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
 - **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
@@ -131,9 +143,23 @@ bun run start <sessionId>
 
 ### Keyboard
 
+- `c` — full-screen Recap view (the whole final reply); `j`/`k`, arrows, Space/PageUp/PageDown scroll; `Esc` or `c` returns
+- `b` — full-screen Background view with the last 20 lines of each task's output file; same scroll keys
 - `r` — force refresh (also clears any switched-session view)
 - `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
+- `Esc` — back to the dashboard
 - `q` / `Ctrl+C` — quit
+
+### Fixtures and tests
+
+```bash
+bun test                                   # unit + fixture tests
+bun run typecheck                          # tsc --noEmit (strict)
+bun run src/index.ts --fixture fixtures/recap-basic.jsonl   # render a fixture, no watcher/registry
+bun run scripts/bench-parse.ts <transcript.jsonl>           # full vs incremental parse timing
+```
+
+Fixtures under `fixtures/` are cut from real transcripts by `scripts/make-fixture.ts`, which scrubs home paths, e-mail addresses, long strings, thinking blocks and classifier fields. `scripts/cut-fixtures.sh` re-cuts the whole set; review `git diff fixtures/` before committing. Each fixture has an `.expect.json` sidecar with measured counts that the tests compare against.
 
 ### Build standalone binary
 
@@ -146,13 +172,14 @@ bun run build    # outputs dist/ccmonitor
 | Panel | Shows |
 |-------|-------|
 | **Last Prompt** | The most recent user-typed prompt (wrapped to fit, truncated at 500 chars) |
+| **Recap** | Claude Code's native recap (`CC:`), the Korean recap section or first lines of the final reply, `now:` narration while a turn is open |
 | **Tools** | Tool call counts, sorted by frequency |
-| **Subagents** | Running/completed agents with type, duration, description |
+| **Background** | Async agents, background Bash commands and Monitors with status, elapsed, exit code, model (replaces Subagents when present) |
+| **Subagents** | Running/completed agents with type, duration, description (when no background tasks exist) |
 | **Skill** | Active skill with elapsed time, last completed skill, history |
 | **Teams** | Team names and member lists |
-| **Tasks** | Task subjects with status icons |
+| **Tasks** | Task subjects with status icons (hidden when empty; task tools are off on Claude 5 models) |
 | **Memory** | Auto-memory state: MEMORY.md size, topic count, category breakdown, recent topics |
-| **Processes** | Child processes of the Claude Code session (PID, RSS memory, command) — only shown when non-empty |
 | **File Activity** | Recent file add/change/unlink events from `~/.claude/` |
 
 ## Faster Skill Detection (Optional)
@@ -181,8 +208,8 @@ ccmonitor is **fully decoupled** from Claude Code — it imports nothing from th
 
 1. Converts `process.cwd()` to Claude's project directory name by replacing `/`, `_`, and `.` with `-` (`/Users/foo/bar` → `-Users-foo-bar`; `/Users/foo/.claude/worktrees/x` → `-Users-foo--claude-worktrees-x`)
 2. Finds the latest `.jsonl` transcript in `~/.claude/projects/<dir>/`
-3. Parses each JSONL entry for tool usage, skills, tokens, messages, and model info
-4. Loads subagent metadata, team configs, and task files from disk
+3. Parses each JSONL entry for tool usage, skills, tokens, messages, model info, recap text, turn boundaries and background tasks. One API response can span several lines that share `message.id`; usage is counted once per id. Refreshes read only the bytes appended since the last one.
+4. Loads subagent metadata, team configs, task files and background-task output files from disk
 5. Renders ANSI box-drawing UI to stdout every 2 seconds
 6. Watches for file changes via [chokidar](https://github.com/paulmillr/chokidar) to show live file activity
 

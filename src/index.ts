@@ -18,7 +18,7 @@ import {
   makeContext,
   type SessionLocation,
 } from './parser.js';
-import { render, cleanup } from './ui.js';
+import { render, cleanup, type View } from './ui.js';
 import type { SessionState } from './types.js';
 
 const REFRESH_INTERVAL = 2000;
@@ -56,6 +56,18 @@ let running = true;
 let reader: TranscriptReader | null = null;
 /** When the user presses 'n' to switch sessions, this holds the target. */
 let selectedSession: { cwd: string; sessionId: string } | null = null;
+/** Current screen: dashboard, or one of the full-screen views (c / b). */
+let view: View = 'dashboard';
+let scroll = 0;
+
+function draw(): void {
+  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll });
+}
+
+function setView(next: View): void {
+  view = view === next ? 'dashboard' : next;
+  scroll = 0;
+}
 
 function readerFor(loc: SessionLocation): TranscriptReader {
   if (!reader || reader.ctx.transcriptFile !== loc.transcriptFile) {
@@ -143,17 +155,48 @@ if (process.stdin.isTTY) {
   process.stdin.resume();
   process.stdin.setEncoding('utf-8');
   process.stdin.on('data', (key: string) => {
-    if (key === 'q' || key === '\x03') shutdown();
-    if (key === 'r') {
-      // 'r' also clears any switched-session override, returning to the CWD-default view
-      selectedSession = null;
-      refreshState();
-      render(state, fileEvents, selectedSession !== null);
+    switch (key) {
+      case 'q':
+      case '\x03':
+        shutdown();
+        return;
+      case 'r':
+        // 'r' also clears any switched-session override, returning to the CWD-default view
+        selectedSession = null;
+        refreshState();
+        break;
+      case 'n':
+        switchToNextSession();
+        break;
+      case 'c':
+        setView('recap');
+        break;
+      case 'b':
+        setView('background');
+        break;
+      case '\x1b': // Esc
+        view = 'dashboard';
+        scroll = 0;
+        break;
+      case 'j':
+      case '\x1b[B': // Down
+        if (view !== 'dashboard') scroll++;
+        break;
+      case 'k':
+      case '\x1b[A': // Up
+        if (view !== 'dashboard') scroll = Math.max(0, scroll - 1);
+        break;
+      case ' ':
+      case '\x1b[6~': // PageDown
+        if (view !== 'dashboard') scroll += 10;
+        break;
+      case '\x1b[5~': // PageUp
+        if (view !== 'dashboard') scroll = Math.max(0, scroll - 10);
+        break;
+      default:
+        return;
     }
-    if (key === 'n') {
-      switchToNextSession();
-      render(state, fileEvents, selectedSession !== null);
-    }
+    draw();
   });
 }
 
@@ -163,12 +206,12 @@ process.on('SIGTERM', shutdown);
 // Main loop — recursive setTimeout is more reliable than setInterval in Bun
 console.log('Starting Claude Code Monitor...');
 refreshState();
-render(state, fileEvents, selectedSession !== null);
+draw();
 
 function tick(): void {
   if (!running) return;
   refreshState();
-  render(state, fileEvents, selectedSession !== null);
+  draw();
   setTimeout(tick, REFRESH_INTERVAL);
 }
 setTimeout(tick, REFRESH_INTERVAL);

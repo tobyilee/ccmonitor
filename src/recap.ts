@@ -2,7 +2,7 @@
  * Pure helpers for the Recap panel. No I/O, no clock.
  */
 
-const KOREAN_HEADING = /^\s*(?:#{1,6}\s*)?\*{0,2}(?:Korean recap|한국어 요약|한글 요약|요약|Recap)\*{0,2}\s*:?\s*$/im;
+const KOREAN_HEADING = /^\s*(?:#{1,6}\s*)?\*{0,2}(?:Korean recap|한국어 요약|한글 요약|요약(?:\s*\((?:Korean recap|한국어)\))?|Recap)\*{0,2}\s*:?\s*$/im;
 
 /** Strip Claude Code's "(disable recaps in /config)" suffix from an away_summary. */
 export function cleanNativeRecap(text: string): string {

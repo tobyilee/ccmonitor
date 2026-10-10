@@ -19,10 +19,13 @@ Run with a specific session: `bun run src/index.ts <sessionId>`
 
 ## Testing
 
-No test suite exists yet (`bun test` is not wired up). Verification is manual:
-1. `bun run build` must succeed.
-2. `bun run start` must render visually-identical TUI output to the prior version.
-3. A `bun test` setup is planned — see `tasks/prd-quality-uplift.md` US-002 / US-005.
+```bash
+bun test               # synthetic + fixture tests (src/*.test.ts, fixtures/*.jsonl)
+bun run typecheck      # tsc --noEmit, strict + noUncheckedIndexedAccess
+bun run src/index.ts --fixture fixtures/recap-basic.jsonl   # render a fixture, no watcher/registry
+```
+
+Fixtures are scrubbed cuts of real transcripts (`scripts/make-fixture.ts`, re-cut with `scripts/cut-fixtures.sh`). Each has a measured `.expect.json` sidecar. Before a release also run `bun run build` and the width sweep in `src/ui.test.ts` (80/100/140 columns).
 
 ## Upgrade
 
@@ -35,17 +38,25 @@ When the user says `upgrade`:
 
 ## Architecture
 
-Four source files in `src/`, no external UI framework — raw ANSI escape codes to stdout:
+No external UI framework — raw ANSI escape codes to stdout. Parsing is split into a pure layer and disk loaders:
 
-- **index.ts** — Entry point. Sets up chokidar file watcher on `~/.claude/` paths, manages keyboard input (q/r), runs a 2-second `setTimeout` refresh loop calling `refreshState()` → `render()`. Maintains a ring buffer of file events (max 50).
-- **parser.ts** — All data extraction logic. `findLatestSession(cwd)` locates the most recent `.jsonl` transcript for a project. `parseTranscript()` reads the JSONL line-by-line and builds `SessionState` by processing each entry for: tool usage counts, skill invocations (both slash-command `<command-name>` tags and `Skill` tool_use blocks), token/message counters, model info, team references. After transcript parsing, loads subagent metadata, team configs, tasks, and hook state from disk.
+- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), chokidar watcher, keyboard (q/r/n/c/b/Esc/j/k), view state (`dashboard | recap | background`), 2-second refresh loop. Holds one `TranscriptReader` per transcript file.
+- **parser.ts** — Orchestration. `parseTranscriptLines(lines, ctx)` (pure), `enrichSessionState(state)` (runs the loaders on a copy), `TranscriptReader` (incremental tail reads; full reparse when the file shrinks or its first 64 bytes change), `locate*Session` helpers, `computeDerived`.
+- **entry.ts** — The pure per-entry state machine (`processEntry` + `handleSystem` / `handleAttachment` / `handleAssistant` / `handleUser` …). Groups assistant lines by `message.id`, opens/closes turns, tracks background tasks, recap text, hooks, permissions, cost, links, queue, attribution, errors. Reports unknown `type` / `system.subtype` / `attachment.type` values through `ctx.onUnknown`.
+- **state.ts** — `createSessionState`, `ParseMemo` (parser working memory), `ParseSession`.
+- **recap.ts** — Pure text helpers: `extractKoreanRecap`, `mdToPlain`, `parseTaskNotification`, `cleanNativeRecap`.
+- **loaders/** — One file per disk source (subagents, teams, tasks, skillHook, git, fileHistory, sessions, memory, effort, rateLimit, process, scratchpad). `paths.ts` holds `CLAUDE_DIR` (override with `CCMONITOR_CLAUDE_DIR`).
 - **types.ts** — All TypeScript interfaces. `SessionState` is the central data structure; `TranscriptEntry` models the JSONL schema.
-- **ui.ts** — Pure rendering. Builds ANSI box-drawing output from `SessionState`. Handles CJK fullwidth character widths for correct terminal alignment. No state mutation.
+- **ui.ts** — Pure rendering. `renderDashboardLines` / `renderRecapViewLines` / `renderBackgroundViewLines` return `string[]`; `render()` writes to stdout. Handles CJK fullwidth and emoji widths. No state mutation.
+- **unknownFields.ts** — Appends unknown kinds to `~/.claude/ccmonitor-unknown-fields.log`.
 
 ### Key Design Decisions
 
 - **CWD-scoped by default**: Without a sessionId argument, the monitor finds the latest session matching `process.cwd()` by converting the path to Claude's directory naming convention (`/Users/foo/bar` → `-Users-foo-bar`).
   - **Known footgun:** `cwdToProjectDirName` maps `_` → `-` (fixed in PR #1), but the inverse `projectDirToRealCwd` only maps `-` → `/`. A cwd containing `_` (e.g. `/Users/foo_bar/baz`) round-trips lossy. Tracked in `quality-20260417.md` Issue #4 and `tasks/prd-quality-uplift.md` NG-6.
+- **Message-id grouping**: one API response is written as several JSONL lines sharing `message.id`; `usage` and the `A:` counter are taken once per id. Numbers are lower than in 1.5.x on the same session.
+- **Turns**: a `user` entry with `promptSource` in typed/queued/suggestion_accepted/sdk or `turnOrigin: human` opens a turn; `system/turn_duration` closes it. Transcripts older than 2.1.281 fall back to "user entry with real text" (never `isMeta` entries).
+- **Background tasks**: launches are remembered from `tool_use` blocks (`Agent`, `Bash` with `run_in_background`, `Monitor`) and resolved by the matching `toolUseResult` (`async_launched` / `backgroundTaskId`). Completion comes from `<task-notification>` blocks in `queue-operation` entries or user prompts; Bash output files are also checked for `[exited with code N]`.
 - **Subagent status heuristic**: A subagent is considered "completed" if its `.jsonl` file hasn't been modified in 30 seconds.
 - **Skill completion detection**: Two mechanisms — (1) transcript parsing detects `stop_reason === 'end_turn'` on assistant messages, (2) a PostToolUse hook (`scripts/on-skill-complete.sh`) writes to `~/.claude/.omc/state/last-skill-complete.json` for faster detection.
 - **No imports from Claude Code codebase** — fully decoupled. Reads only the file artifacts Claude Code produces.
@@ -63,7 +74,8 @@ The monitor reads these paths (documented in detail in `filegen.md`):
 | `teams/<name>/inboxes/` | Team message inboxes |
 | `tasks/<sessionId>/*.json` | Task/TODO data |
 | `sessions/<pid>.json` | Active session registry |
-| `.omc/state/last-skill-complete.json` | Hook-written skill completion signal |
+| `.omc/state/last-skill-complete.json` | Hook-written skill completion signal (optional) |
+| `/private/tmp/claude-<uid>/<proj>/<sid>/tasks/<id>.output` | Background task output (path from the `environment` attachment / `toolUseResult.outputFile`) |
 
 ### Hook Script
 

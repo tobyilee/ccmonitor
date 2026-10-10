@@ -187,6 +187,7 @@ describe('recap helpers (T1.3)', () => {
     expect(extractKoreanRecap('a\n\n**Korean recap**\n\n- 하나\n- 둘')).toBe('- 하나\n- 둘');
     expect(extractKoreanRecap('a\n## 요약\n내용')).toBe('내용');
     expect(extractKoreanRecap('a\nRecap:\n내용')).toBe('내용');
+    expect(extractKoreanRecap('a\n**요약 (Korean recap)**\n- 내용')).toBe('- 내용');
     expect(extractKoreanRecap('no heading here')).toBeNull();
   });
 
