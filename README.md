@@ -98,11 +98,10 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
 - **Reasoning effort** — `Effort:max` shows the current Claude Code reasoning level color-coded by intensity (max=magenta, high=red, medium=yellow, low=gray). Read from the per-turn `effort` field newer Claude Code stamps on assistant transcript entries (the value actually used), falling back to the settings cascade (project `.claude/settings.local.json` → project `.claude/settings.json` → user `~/.claude/settings.json`) for old transcripts. The internal value `xhigh` is displayed as `max` to match what `/effort max` accepts as input.
-- **Token analytics** — `Rate:8.2K/min` shows average token burn rate, `Compact:1` counts detected context compactions (>30% token drops), `Peak:245.3K` tracks the high-water mark, and a braille sparkline visualizes per-turn token volume.
-- **Rate limit quota** — inline 10-char usage bars for the 5-hour and 7-day API quota windows (sourced from `~/.claude/abtop-rate-limits.json`). Color-coded green/yellow/red with reset countdowns. Marked `(stale)` when data is >10 minutes old.
-- **Tool durations** — each tool in the Tools panel shows its average execution time as a `~Ns` suffix (e.g. `Bash:12 ~2s`), computed by pairing `tool_use` → `tool_result` timestamps in the transcript.
-- **Process memory** — `Mem:NMB` in the session header shows the Claude Code process RSS. A collapsible Processes panel lists child processes sorted by memory usage.
-- **Context indicator** — `Ctx:18%` turns yellow at 70% and red at 85% so you notice context exhaustion before it bites.
+- **Token analytics** — `Rate:8.2K/min` shows average token burn rate, `Compact:2 (manual 535.0K→13.8K)` counts context compactions exactly from `system/compact_boundary` (the >30% token-drop heuristic is kept only for transcripts from Claude Code older than 2.1.280), `Peak:245.3K` tracks the high-water mark, `Think:4.9s` is the mean thinking time per response, and a braille sparkline visualizes per-response token volume.
+- **Rate limit quota** — inline 10-char usage bars for the 5-hour and 7-day quota windows, fetched from the Anthropic OAuth usage API (token from the macOS Keychain) and cached for 5 minutes in `~/.claude/ccmonitor-usage-cache.json`; falls back to abtop's `~/.claude/abtop-rate-limits.json`. Color-coded green/yellow/red with reset countdowns. Marked `(stale)` when the cached data is older than its TTL.
+- **Process memory** — `Mem:NMB` in the session header shows the Claude Code process RSS (via `ps`, no shell).
+- **Context indicator** — `Ctx:18%` turns yellow at 70% and red at 85% so you notice context exhaustion before it bites. The window is 1M tokens for Claude 5 family models (Fable, Mythos, Opus/Sonnet/Haiku 5.x) and Opus 4.5+, 200K otherwise.
 - **Subagent status** — `●` (running, yellow), `✔` (completed, green), `✘` (error, red); completed-count summary appears in the box title when there are finished agents.
 - **Session picker** — press `s` for a list of live sessions (status, entrypoint, name, cwd, age, version, last typed prompt from `history.jsonl`); `Enter` switches, `Esc` returns. `n` still cycles through them one by one. A high-contrast yellow `VIEWING` badge in the footer reminds you that you're watching a switched session; press `r` to return to the default view for your current cwd.
 
@@ -137,7 +136,7 @@ bun run install:global -- --dir /usr/local/bin   # custom install directory
 bun run install:global -- --name ccmon           # custom binary name
 ```
 
-The `bun build --compile` flag embeds the Bun runtime into a single binary (~54MB), so once installed, the machine does not need Bun on PATH to run it.
+The `bun build --compile` flag embeds the Bun runtime into a single binary (~62MB), so once installed, the machine does not need Bun on PATH to run it.
 
 ### Global link (for development)
 
@@ -227,6 +226,14 @@ Install the PostToolUse hook for near-instant skill completion updates:
 }
 ```
 
+## Documentation
+
+- [`docs/spec-v2-session-state.md`](./docs/spec-v2-session-state.md) — what changed in Claude Code 2.1.220 → 2.1.296 on disk, every data source, and the design of features F1–F16.
+- [`docs/implementation-plan-v2.md`](./docs/implementation-plan-v2.md) — the 31-task plan with a Verify block per task.
+- [`docs/verification-v2.md`](./docs/verification-v2.md) — how each task was verified, with the final check outputs.
+- [`CLAUDE.md`](./CLAUDE.md) — architecture and conventions for contributors.
+- [`filegen.md`](./filegen.md) — reference for the files Claude Code writes under `~/.claude/`.
+
 ## How It Works
 
 ccmonitor is **fully decoupled** from Claude Code — it imports nothing from the Claude Code codebase. Instead, it reads the file artifacts that Claude Code produces under `~/.claude/`, using two data channels: **JSONL transcript parsing** and **disk file scanning**.
@@ -253,11 +260,13 @@ The "Last Prompt" panel shows the most recent actual user-typed prompt. Extracti
 5. Task notifications (`<task-notification>...`)
 6. Skill expansion bodies (huge prose blobs injected when a slash-command skill loads)
 
-The extractor (`extractRealUserPrompt()` in `src/parser.ts`) handles these in priority order:
+The extractor (`extractRealUserPrompt()` in `src/entry.ts`) handles these in priority order:
 
 1. **If `<command-args>` is present** → use its content (slash commands put the user's actual input there)
 2. **Otherwise** → strip all wrapper tags and return the remainder
-3. **Filter out** pure hook echo lines (`UserPromptSubmit hook success: ...`) and skill expansion preambles (`Base directory for this skill: ...`)
+3. **Filter out** pure hook echo lines (`UserPromptSubmit hook success: ...`), skill expansion preambles (`Base directory for this skill: ...`) and `[Request interrupted by user]` markers
+
+Newer Claude Code also writes the verbatim prompt as a `last-prompt` entry, which wins when present. Prompts delivered by background-task notifications or peer sessions (`turnOrigin`) open a turn but do not replace the Last Prompt.
 
 The UI panel then applies a **500-character hard cap** (using `Array.from()` for true character counting, which handles emoji surrogate pairs correctly) and **word-wraps** the result to the terminal width with CJK-aware width calculations — Korean/Japanese/Chinese characters count as 2 cells, so wrapping respects their true display width.
 
@@ -279,7 +288,7 @@ Skills are detected through **three complementary mechanisms**:
 
 3. **PostToolUse hook** (optional) — An external shell script (`scripts/on-skill-complete.sh`) can be registered as a Claude Code PostToolUse hook. When the Skill tool completes, the hook writes completion data to `~/.claude/.omc/state/last-skill-complete.json`. The monitor reads this file for near-instant skill completion detection, falling back to transcript-based detection if the hook isn't installed.
 
-**Skill lifecycle tracking:** The active skill is tracked via `activeSkill` state. Completion is detected when the assistant emits a message with `stop_reason: "end_turn"`, at which point the skill is promoted to `lastCompletedSkill` and added to the history ring (up to 5 entries).
+**Skill lifecycle tracking:** The active skill is tracked via `activeSkill` state. Completion is detected when the assistant emits a message with `stop_reason: "end_turn"` or the user sends the next prompt, at which point the skill is promoted to `lastCompletedSkill` and added to the history ring (up to 5 entries). Independently, newer transcripts stamp `attributionSkill` / `attributionPlugin` on each assistant response; the Skill box shows how many responses ran under each (`ego-browser attributed:14`).
 
 #### Subagents (Agents)
 
@@ -288,7 +297,7 @@ Loaded from disk at `~/.claude/projects/<dir>/<sessionId>/subagents/`:
 - **`agent-*.meta.json`** — Provides metadata: `agentType` (e.g. `"Explore"`, `"code-reviewer"`) and `description` (the task summary).
 - **`agent-*.jsonl`** — The subagent's own transcript. The monitor uses its **file modification time** as a status heuristic: if the `.jsonl` hasn't been written to in 30 seconds, the agent is considered `completed`.
 
-Subagents are **not** parsed from the main transcript — they are discovered entirely through filesystem scanning of the subagents directory.
+The Subagents box is discovered entirely through filesystem scanning of this directory. It is shown only when the transcript has no background tasks (next section); newer Claude Code launches most agents asynchronously, which the transcript records directly.
 
 #### Teams
 
@@ -306,6 +315,34 @@ Aggregated from **two sources**:
 1. **Transcript entries** — JSONL entries with `type: "create"` contain task subjects and initial status. Entries with `type: "update"` modify existing task statuses by matching `taskId`.
 2. **Task files on disk** — JSON files at `~/.claude/tasks/<sessionId>/*.json` provide task data that may not yet appear in the transcript (e.g. tasks created by subagents).
 
+#### Background Tasks
+
+Newer Claude Code runs `Agent` calls asynchronously and lets Bash run with `run_in_background`. The parser remembers each launch from its `tool_use` block (kind, description, `subagent_type`) and resolves it from the matching tool result: `toolUseResult.status === "async_launched"` gives `agentId`, `resolvedModel` and `outputFile`; `toolUseResult.backgroundTaskId` gives the Bash task id and its output path. Completion arrives as a `<task-notification>` block (inside `queue-operation` entries or a notification prompt) with `<status>` and `<summary>` (`… completed (exit code 0)`). For Bash tasks still marked running, the loader stats the output file under the scratchpad `tasks/` directory and reads its `[exited with code N]` trailer. The `b` view shows the last 20 lines of each output file, read on demand.
+
+#### Recap and Turns
+
+- **Native recap** — `system` entries with `subtype: "away_summary"`, written by Claude Code a few minutes after a turn ends (`CC:` line; the `(disable recaps in /config)` suffix is stripped).
+- **Final reply** — the `text` blocks of the last assistant message with `stop_reason: "end_turn"`, joined across the JSONL lines that share its `message.id`. If it contains a "Korean recap" style heading, only that section is shown in the compact box; otherwise the first 6 lines. Markdown is reduced (`**` and backticks stripped, fenced code shown as `[code]`).
+- **Live narration** — while a turn is open, the newest `text` block from a `tool_use` response is shown as `now:`.
+- **Turns** — a user entry with `promptSource` in typed/queued/suggestion_accepted/sdk (or `turnOrigin: "human"`) opens a turn; `system/turn_duration` closes it with `durationMs`, `messageCount` and `pendingBackgroundAgentCount`. The Turn line shows the open turn's elapsed time and tool calls, or the last duration, the average and a sparkline of the last 10.
+
+#### Cost, Permissions, Hooks, Links, Queue, Errors
+
+| Panel / chip | Source |
+|---|---|
+| Cost line | `cost-state` entry (`totalCostUSD`, per-model `modelUsage`, API/tool time, lines added/removed); fallback `~/.claude.json` → `projects[cwd].lastCost` shown as `(prev session)` |
+| `Mode:` chip | `permission-mode` entries, `permissionMode` on prompts, `auto_mode` attachment flags (`bash-first`) |
+| `Denied:` strip | `permissionDecision: {decision: "reject", reasonType}` and `toolDenialKind` on tool results; the rule text is the first line of the tool error |
+| Hooks box | `hook_success` attachments counted per `hookEvent`; non-zero `exitCode` rows; `stop_hook_summary.preventedContinuation` ⇒ `STOP BLOCKED` |
+| `RC●` chip | `system/bridge_status` content and URL (Remote Control) |
+| Links box | `pr-link` (deduped per repository + number), `frame-link` artifacts, `<plansDirectory>/<slug>.md` for the transcript's `slug`, `feedback/drafts/*.json` matching `source_session_id` |
+| `Queue:N` chip | `queue-operation` enqueue − dequeue − remove; preview from `queued_command` attachments |
+| MCP box, `Advisor:`, `Fast` | `mcp__<server>__*` tool names + `attributionMcpServer`; `server_tool_use` blocks named `advisor`; `usage.speed === "fast"` |
+| Error strip | `isApiErrorMessage` (status/code), `interruptedMessageId`, `isAbortedMidStream` within the last 3 turns |
+| Title, icons | `custom-title` > `agent-name` > `ai-title`; `entrypoint` (`cli` ⌨ / `claude-desktop` 🖥) |
+
+Unknown entry types, system subtypes and attachment kinds are appended once per run to `~/.claude/ccmonitor-unknown-fields.log`, so schema drift in a new Claude Code version is visible without a debugger.
+
 #### Token Usage & Context Window
 
 Extracted from `message.usage` fields on transcript entries:
@@ -317,7 +354,7 @@ Extracted from `message.usage` fields on transcript entries:
 | `cache_creation_input_tokens` | Tokens written to prompt cache |
 | `cache_read_input_tokens` | Tokens read from prompt cache |
 
-The **context window usage percentage** is calculated from the most recent assistant message's total input tokens (input + cache write + cache read) divided by the model's known context limit (1M for Opus 4.5+, 200K for others).
+One API response is written as several JSONL lines that share `message.id` (thinking, text, tool_use), each carrying the same `usage`; the parser counts usage and the `A:` message counter **once per id**. The **context window usage percentage** is calculated from the most recent response's total input tokens (input + cache write + cache read) divided by the model's context limit (1M for Claude 5 family models and Opus 4.5+, 200K for others; a size published in `~/.claude/cache/model-catalog` would take precedence).
 
 #### Model
 
@@ -329,11 +366,11 @@ Parsed directly from `<cwd>/.git/HEAD` every refresh cycle. Handles both normal 
 
 #### Files Edited Counter
 
-Counted from `~/.claude/file-history/<sessionId>/`, the directory where Claude Code stores pre-edit backups for the Undo feature. Each file appears as `<hash>@v<N>` where the hash identifies a sanitized file path and `N` is the edit version. The counter strips the `@v<N>` suffix and deduplicates by hash, so a file edited 5 times counts once — the metric represents "how many distinct files were touched," not "how many total edits."
+Two sources. (1) `~/.claude/file-history/<sessionId>/`, where Claude Code stores pre-edit backups for the Undo feature as `<hash>@v<N>`; stripping the `@v<N>` suffix and deduplicating by hash gives distinct files. (2) The transcript: `file-history-delta` entries (`trackingPath`, `backup.version`, cwd-relative) and the `filePath` in Write/Edit tool results (absolute), normalised to one key per file; `edited_text_file` attachments flag files changed outside Claude Code. The header shows `Files:N`, or `~N` with the larger value when the two sources disagree.
 
 #### Active Sessions
 
-Populated from `~/.claude/sessions/<pid>.json`, a registry of every running Claude Code process. Each entry contains `{pid, sessionId, cwd, startedAt, kind, entrypoint}`. The monitor:
+Populated from `~/.claude/sessions/<pid>.json`, a registry of every running Claude Code process. Each entry carries `pid`, `sessionId`, `cwd`, `startedAt`, `name`, `status` (`busy`/`idle`/`waiting`), `statusUpdatedAt`, `updatedAt`, `version`, `kind`, `entrypoint`, `hostSessionId` (Desktop) and `messagingSocketPath`; the sibling `.key` files are never read. The registry's `sessionId` can go stale after `/clear`, so the newest transcript in the session's project directory is used instead. The monitor:
 
 1. Reads every `*.json` file in the sessions directory.
 2. For each entry, sends signal 0 (`process.kill(pid, 0)`) to verify the process is actually alive — this is a zero-cost liveness check that doesn't affect the target process.
@@ -356,7 +393,7 @@ The breakdown line trades vertical space for information density: a 9-topic memo
 
 #### File Activity
 
-Not extracted from transcripts — instead, [chokidar](https://github.com/paulmillr/chokidar) watches glob patterns across `~/.claude/` for real-time file system events (add/change/unlink). Events are stored in a ring buffer (max 50) and the 8 most recent are displayed.
+The box lists the session's own edited files first (`path  vN  HH:MM:SS`, newest first, `(edited outside)` for external changes), from the sources above. Below them, [chokidar](https://github.com/paulmillr/chokidar) watches glob patterns across `~/.claude/` for real-time file system events (add/change/unlink); events are stored in a ring buffer (max 50) and the most recent few are shown dim.
 
 ### Watched File Paths
 
