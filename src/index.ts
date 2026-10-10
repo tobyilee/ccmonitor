@@ -19,6 +19,7 @@ import {
   type SessionLocation,
 } from './parser.js';
 import { render, cleanup, sectionForKey, type View } from './ui.js';
+import { sessionRows } from './views/sessions.js';
 import { loadUiPrefs, saveUiPrefs } from './uiPrefs.js';
 import type { SessionState } from './types.js';
 
@@ -61,10 +62,23 @@ let selectedSession: { cwd: string; sessionId: string } | null = null;
 let view: View = 'dashboard';
 let scroll = 0;
 let showDenials = false;
+let cursor = 0;
 const uiPrefs = loadUiPrefs();
 
 function draw(): void {
-  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed });
+  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll, showDenials, collapsed: uiPrefs.collapsed, cursor });
+}
+
+/** Enter in the session picker: switch to the highlighted session. */
+function selectCursorSession(): void {
+  if (!state) return;
+  const rows = sessionRows(state);
+  const row = rows[Math.min(cursor, rows.length - 1)];
+  if (!row) return;
+  selectedSession = row.isCurrent ? null : { cwd: row.session.cwd, sessionId: row.session.sessionId };
+  view = 'dashboard';
+  scroll = 0;
+  refreshState();
 }
 
 /** Number keys toggle a dashboard section; the choice is persisted. */
@@ -190,6 +204,17 @@ if (process.stdin.isTTY) {
       case 'i':
         setView('info');
         break;
+      case 's':
+        setView('sessions');
+        if (view === 'sessions' && state) {
+          cursor = Math.max(0, sessionRows(state).findIndex(r => r.isCurrent));
+        }
+        break;
+      case '\r':
+      case '\n':
+        if (view === 'sessions') selectCursorSession();
+        else return;
+        break;
       case 'd':
         showDenials = !showDenials;
         break;
@@ -199,11 +224,13 @@ if (process.stdin.isTTY) {
         break;
       case 'j':
       case '\x1b[B': // Down
-        if (view !== 'dashboard') scroll++;
+        if (view === 'sessions') cursor++;
+        else if (view !== 'dashboard') scroll++;
         break;
       case 'k':
       case '\x1b[A': // Up
-        if (view !== 'dashboard') scroll = Math.max(0, scroll - 1);
+        if (view === 'sessions') cursor = Math.max(0, cursor - 1);
+        else if (view !== 'dashboard') scroll = Math.max(0, scroll - 1);
         break;
       case ' ':
       case '\x1b[6~': // PageDown

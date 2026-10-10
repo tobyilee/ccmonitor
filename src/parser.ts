@@ -29,6 +29,8 @@ import { loadPreviousCost } from './loaders/globalConfig.js';
 import { loadModelCatalog } from './loaders/modelCatalog.js';
 import { loadPlanFile } from './loaders/plans.js';
 import { loadFeedbackDrafts } from './loaders/feedback.js';
+import { loadLastPrompts } from './loaders/history.js';
+import { loadChangelogTop, loadLastUpdate } from './loaders/update.js';
 import { fileUnknownLogger } from './unknownFields.js';
 
 export { extractRealUserPrompt, processEntry, compareVersions } from './entry.js';
@@ -152,14 +154,30 @@ export function enrichSessionState(parsed: SessionState, opts: EnrichOptions = {
     state.rateLimit = loadRateLimit();
     const self = state.activeSessions.find(s => s.sessionId === state.sessionId);
     state.processMemMb = self ? loadProcessMemMb(self.pid) : 0;
+    state.sessionPrompts = loadLastPrompts();
+    state.update = resolveUpdate(self?.version ?? state.version);
   } else {
     state.activeSessions = [];
     state.rateLimit = null;
     state.processMemMb = 0;
+    state.sessionPrompts = new Map();
+    state.update = null;
   }
 
   computeDerived(state);
   return state;
+}
+
+/** Update status for the running session's version (pure given the loader results). */
+export function resolveUpdate(
+  running: string | null,
+  last = loadLastUpdate(),
+  changelog = loadChangelogTop(),
+): SessionState['update'] {
+  if (!last && !changelog) return null;
+  const latest = last?.versionTo ?? changelog?.version ?? null;
+  const available = latest !== null && running !== null && compareVersions(latest, running) > 0;
+  return { latest, available, changelog };
 }
 
 // ---------------------------------------------------------------------------

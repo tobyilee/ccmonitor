@@ -125,6 +125,8 @@ export function createSessionState(ctx: ParseContext): SessionState {
     },
     errors: { api: [], interrupts: 0, interruptTimes: [], abortedMidStream: 0 },
     editedFiles: new Map(),
+    sessionPrompts: new Map(),
+    update: null,
   };
 }
 

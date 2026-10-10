@@ -7,7 +7,7 @@ import { normalizeGolden } from '../scripts/update-golden.js';
 import { parseTranscriptLines, computeDerived } from './parser.js';
 import {
   displayWidth, wordWrap, stripAnsi, truncateToWidth, formatDurationCompact,
-  renderDashboardLines, renderRecapViewLines, renderBackgroundViewLines, renderInfoViewLines, statusDot, entrypointIcon,
+  renderDashboardLines, renderRecapViewLines, renderBackgroundViewLines, renderInfoViewLines, renderSessionsViewLines, statusDot, entrypointIcon,
   SECTIONS, sectionForKey,
 } from './ui.js';
 import type { SessionState } from './types.js';
@@ -183,6 +183,7 @@ describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', ()
     expect(stripAnsi(statusDot('busy', now - 1000, now))).toBe('●');
     expect(stripAnsi(statusDot('idle', now - 1000, now))).toBe('○');
     expect(stripAnsi(statusDot('busy', now - 11 * 60 * 1000, now))).toBe('?');
+    expect(stripAnsi(statusDot('idle', now - 11 * 60 * 1000, now))).toBe('○');
     expect(entrypointIcon('cli')).toBe('⌨');
     expect(entrypointIcon('claude-desktop')).toBe('🖥');
     expect(entrypointIcon(null)).toBe('');
@@ -263,5 +264,41 @@ describe.skipIf(!existsSync(join(FIX, 'errors.jsonl')))('phase 3 panels', () => 
     const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
     expect(plain.some(l => l.includes('Queue:2'))).toBe(true);
     expect(plain.some(l => l.includes('↳ next (2 queued): second prompt text'))).toBe(true);
+  });
+});
+
+describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 4 panels', () => {
+  test('file activity lists edited files with version and time', () => {
+    const s = loadState('background');
+    s.editedFiles.set('/Users/dev/workspace/work/bmx/bzflow/src/a.kt', { path: '/Users/dev/workspace/work/bmx/bzflow/src/a.kt', version: 2, lastEdit: NOW, external: false });
+    s.editedFilesCount = 1;
+    const plain = renderDashboardLines(s, [{ path: '/Users/dev/.claude/x.jsonl', time: NOW, event: 'change' }], { now: NOW, width: 100 }).map(stripAnsi);
+    const start = plain.findIndex(l => l.startsWith('┌─ File Activity'));
+    expect(plain[start + 1]).toMatch(/^│ src\/a\.kt\s+v2 05:00:00/);
+    expect(plain.slice(start).some(l => l.includes('change 05:00:00'))).toBe(true);
+    expect(plain.some(l => / Files:~2/.test(l))).toBe(true);
+  });
+
+  test('update available shows in the header and the info view', () => {
+    const s = loadState('recap-basic');
+    s.update = { latest: '9.9.9', available: true, changelog: { version: '9.9.9', bullets: ['one', 'two'] } };
+    const plain = renderDashboardLines(s, [], { now: NOW, width: 120 }).map(stripAnsi);
+    expect(plain.some(l => l.includes('update available (9.9.9)'))).toBe(true);
+    const info = renderInfoViewLines(s, { now: NOW, width: 100, height: 80 }).map(stripAnsi);
+    expect(info.some(l => l.includes('Claude Code update') && l.includes('available: 9.9.9'))).toBe(true);
+    expect(info.some(l => l.trim() === '- one')).toBe(true);
+  });
+
+  test('session picker renders rows and highlights the cursor', () => {
+    const s = loadState('recap-basic');
+    s.activeSessions = [
+      { pid: 1, sessionId: 'recap-basic', cwd: '/Users/dev/a', startedAt: new Date(NOW.getTime() - 60000), name: 'alpha-1', status: 'busy', version: '2.1.296', kind: 'interactive', entrypoint: 'cli', hostSessionId: null, nameSource: 'derived', statusUpdatedAt: NOW.getTime(), messagingSocketPath: null, updatedAt: NOW.getTime() },
+      { pid: 2, sessionId: 'other', cwd: '/Users/dev/b', startedAt: new Date(NOW.getTime() - 120000), name: 'Kotlin 가이드', status: 'idle', version: '2.1.295', kind: 'interactive', entrypoint: 'claude-desktop', hostSessionId: 'h', nameSource: null, statusUpdatedAt: NOW.getTime(), messagingSocketPath: null, updatedAt: NOW.getTime() - 1000 },
+    ];
+    s.sessionPrompts = new Map([['other', { display: 'migrate kotlin please', time: NOW, project: '/Users/dev/b' }]]);
+    for (const W of [80, 100, 140]) assertFits(renderSessionsViewLines(s, { now: NOW, width: W, height: 20, cursor: 1 }), W, 'sessions');
+    const plain = renderSessionsViewLines(s, { now: NOW, width: 100, height: 20, cursor: 1 }).map(stripAnsi);
+    expect(plain.some(l => l.startsWith(' *● ⌨ alpha-1'))).toBe(true);
+    expect(plain.some(l => l.startsWith('▶ ○ 🖥 Kotlin 가이드') && l.includes('migrate kotlin please'))).toBe(true);
   });
 });

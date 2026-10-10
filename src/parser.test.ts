@@ -542,3 +542,103 @@ describe('errors (T3.5)', () => {
     expect(s.lastUserPrompt).toBe('go');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4 (v1.9): history, update awareness, session rows
+// ---------------------------------------------------------------------------
+
+import { loadLastPrompts, parseHistory } from './loaders/history.js';
+import { loadLastUpdate, parseChangelogTop, loadChangelogTop } from './loaders/update.js';
+import { resolveUpdate } from './parser.js';
+import { sessionRows } from './views/sessions.js';
+import { createSessionState } from './state.js';
+import type { AvailableSession } from './types.js';
+
+describe('history loader (T4.1)', () => {
+  test('last prompt per sessionId; malformed line skipped', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-hist-'));
+    const file = join(dir, 'history.jsonl');
+    writeFileSync(file, [
+      JSON.stringify({ display: 'first', timestamp: 1, project: '/p', sessionId: 'A' }),
+      '{not json',
+      JSON.stringify({ display: 'second', timestamp: 2, project: '/p', sessionId: 'A' }),
+      JSON.stringify({ display: 'other', timestamp: 3, project: '/q', sessionId: 'B' }),
+    ].join('\n') + '\n');
+    const m = loadLastPrompts(file);
+    expect(m.get('A')?.display).toBe('second');
+    expect(m.get('B')?.project).toBe('/q');
+    expect(loadLastPrompts(join(dir, 'missing.jsonl')).size).toBe(0);
+    // tail read drops the partial first line
+    const big = loadLastPrompts(file, 60);
+    expect([...big.keys()].every(k => k === 'A' || k === 'B')).toBe(true);
+    expect(parseHistory('').size).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('update awareness (T4.3)', () => {
+  test('version compare and availability', () => {
+    expect(compareVersions('2.1.296', '2.1.295')).toBeGreaterThan(0);
+    expect(compareVersions('2.1.300', '2.1.296')).toBeGreaterThan(0);
+    expect(compareVersions('2.2.0', '2.1.999')).toBeGreaterThan(0);
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-upd-'));
+    const file = join(dir, 'last.json');
+    writeFileSync(file, JSON.stringify({ timestamp: '2026-10-09T19:48:10.761Z', outcome: 'success', version_from: '2.1.295', version_to: '9.9.9' }));
+    const last = loadLastUpdate(file);
+    expect(last?.versionTo).toBe('9.9.9');
+    expect(resolveUpdate('2.1.296', last, null)?.available).toBe(true);
+    expect(resolveUpdate('9.9.9', last, null)?.available).toBe(false);
+    expect(resolveUpdate(null, last, null)?.available).toBe(false);
+    expect(resolveUpdate('2.1.296', null, null)).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('changelog parser returns the newest heading and 5 bullets', () => {
+    const text = '# Changelog\n\n## 2.1.296\n\n- one\n- two\n* three\n- four\n- five\n- six\n\n## 2.1.295\n\n- old\n';
+    const top = parseChangelogTop(text);
+    expect(top?.version).toBe('2.1.296');
+    expect(top?.bullets).toEqual(['one', 'two', 'three', 'four', 'five']);
+    expect(parseChangelogTop('no headings')).toBeNull();
+    const real = loadChangelogTop(join(process.env.HOME ?? '', '.claude', 'cache', 'changelog.md'));
+    if (real) {
+      expect(real.version).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(real.bullets.length).toBeGreaterThan(0);
+      expect(real.bullets.every(b => b.length > 0)).toBe(true);
+    }
+  });
+});
+
+describe('session picker rows (T4.1)', () => {
+  test('sorted by updatedAt desc, current marked, last prompt attached', () => {
+    const mk = (id: string, updatedAt: number, name: string): AvailableSession => ({
+      pid: 1, sessionId: id, cwd: `/Users/dev/${name}`, startedAt: new Date(0), name, status: 'idle', version: '2.1.296',
+      kind: 'interactive', entrypoint: 'cli', hostSessionId: null, nameSource: 'derived', statusUpdatedAt: updatedAt,
+      messagingSocketPath: null, updatedAt,
+    });
+    const state = createSessionState({ sessionId: 'B', projectDir: '', transcriptFile: '' });
+    state.activeSessions = [mk('A', 10, 'alpha'), mk('B', 30, 'beta'), mk('C', 20, 'gamma')];
+    state.sessionPrompts = new Map([['C', { display: 'hello gamma', time: null, project: null }]]);
+    const rows = sessionRows(state);
+    expect(rows.map(r => r.session.sessionId)).toEqual(['B', 'C', 'A']);
+    expect(rows[0]?.isCurrent).toBe(true);
+    expect(rows[1]?.lastPrompt).toBe('hello gamma');
+    expect(rows[2]?.cwdBase).toBe('alpha');
+  });
+});
+
+describe('edited files (T4.2)', () => {
+  test('relative trackingPath and absolute filePath share one key; versions and external flags merge', () => {
+    const lines = [
+      human('go', 0),
+      assistantLine('m1', 'tool_use', [{ type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: '/Users/dev/p/src/a.ts' } }], 1),
+      toolResult('w1', 2, { toolUseResult: { type: 'create', filePath: '/Users/dev/p/src/a.ts' } }),
+      JSON.stringify({ type: 'file-history-delta', trackingPath: 'src/a.ts', backup: { version: 2, backupTime: ts(3) } }),
+      JSON.stringify({ type: 'file-history-delta', trackingPath: 'src/b.ts', backup: { version: 1, backupTime: ts(4) } }),
+      JSON.stringify({ type: 'attachment', uuid: 'e1', timestamp: ts(5), attachment: { type: 'edited_text_file', filename: 'src/b.ts' } }),
+    ];
+    const s = parseTranscriptLines(lines, ctx);
+    expect([...s.editedFiles.keys()].sort()).toEqual(['/Users/dev/p/src/a.ts', '/Users/dev/p/src/b.ts']);
+    expect(s.editedFiles.get('/Users/dev/p/src/a.ts')).toMatchObject({ version: 2, external: false });
+    expect(s.editedFiles.get('/Users/dev/p/src/b.ts')).toMatchObject({ version: 1, external: true });
+  });
+});

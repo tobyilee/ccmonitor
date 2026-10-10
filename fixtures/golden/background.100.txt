@@ -3,7 +3,7 @@
  Session:⌨ backgrou Model:fable-5-1 Effort:high Ctx:43% Age:1h 47m Idle:20m 48s
  Turn:#9 ⏱ 23m18s (open) tools:13 Mode:auto(bash-first) RC●
  Sess:0 CC:v2.1.296
- Msgs:U:204 A:118 Tok:I:3.2K O:170.0K CW:756.9K CR:31.0M Files:0
+ Msgs:U:204 A:118 Tok:I:3.2K O:170.0K CW:756.9K CR:31.0M Files:1
  Rate:368.7K/min Compact:0 Peak:430.1K Think:8.3s ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
 ┌─ Last Prompt  04:36:41 ──────────────────────────────────────────────────────────────────────────┐
 │ SMS 진행하자. 실제 발송에 필요한 전화번호를 가진 회원을 찾아보고 없으면 내가 등록할게.           │
@@ -54,6 +54,6 @@
 │ (no memory yet)                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ File Activity ──────────────────────────────────────────────────────────────────────────────────┐
-│ (watching for changes...)                                                                        │
+│ /Users/dev/.claude/projects/-Users-dev-workspace-work-bmx-bzflow/…  v1 03:31:38 (edited outside) │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  q:quit r:refresh c:recap b:background d:denials i:info | auto 2s

@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.8.0**
+**Version: 1.9.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -15,7 +15,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
  /Users/you/workspace/my-project [main] — Add git branch to the header bar         [dim gray + magenta + cyan]
  Session:⌨ a1b2c3d4·merry-tarjan Model:opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
  Turn:#7 done 4m02s · avg 2m10s · ▂▅▃▇▁ Mode:auto(bash-first) RC●
- Sess:3 (+●api-f3, 🖥○docs-a1) CC:v2.1.296
+ Sess:3 (+●api-f3, 🖥○docs-a1) CC:v2.1.296 update available (2.1.297)
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
  Cost:$1.03 API:1m23s Tools:1.3s +12/-3 opus-4-6:$1.03
  Rate:8.2K/min Compact:1 (auto 180.2K→14.1K) Peak:245.3K Think:4.9s ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
@@ -70,10 +70,11 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │   recent: user_profile, feedback_naming, project_codex_model                │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ File Activity ─────────────────────────────────────────────────────────────┐
+│ src/ui.ts  v3 17:18:00                                                      │
+│ README.md  v1 17:16:12 (edited outside)                                     │
 │ change 17:18:02  ~/.claude/projects/-Users-you-workspace/abc123.jsonl       │
-│ add    17:17:58  ~/.claude/tasks/abc123/task-42.json                        │
 └─────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh c:recap b:background d:denials i:info n:next | auto 2s hidden:9
+ q:quit r:refresh c:recap b:background d:denials i:info s:sessions n:next | auto 2s hidden:9
 ```
 
 ### Visual highlights
@@ -92,7 +93,8 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Attribution** — the Skill box shows how many responses ran under each skill or plugin; an `MCP` box counts calls per MCP server; `Think:4.9s` is the mean thinking time per response, `Advisor:…` counts advisor calls, `Fast` marks fast mode.
 - **Error strip** — a red line appears under the header when the last three turns saw an API error, an interrupt or an aborted stream.
 - **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle, grey `?`=status older than 10 minutes. `🖥` marks Claude Desktop sessions. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
-- **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
+- **Files counter** — `Files:N` shows the number of unique files edited in this session (file-history directory and transcript `file-history-delta` / Write / Edit records; `~N` when the two sources disagree). The File Activity box lists those files with their version number and last edit time, marking files changed outside Claude Code.
+- **Update awareness** — `update available (x.y.z)` appears after the Claude Code version when `.last-update-result.json` names a newer release; the `i` view shows the newest cached changelog bullets.
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
 - **Reasoning effort** — `Effort:max` shows the current Claude Code reasoning level color-coded by intensity (max=magenta, high=red, medium=yellow, low=gray). Read from the per-turn `effort` field newer Claude Code stamps on assistant transcript entries (the value actually used), falling back to the settings cascade (project `.claude/settings.local.json` → project `.claude/settings.json` → user `~/.claude/settings.json`) for old transcripts. The internal value `xhigh` is displayed as `max` to match what `/effort max` accepts as input.
@@ -102,7 +104,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Process memory** — `Mem:NMB` in the session header shows the Claude Code process RSS. A collapsible Processes panel lists child processes sorted by memory usage.
 - **Context indicator** — `Ctx:18%` turns yellow at 70% and red at 85% so you notice context exhaustion before it bites.
 - **Subagent status** — `●` (running, yellow), `✔` (completed, green), `✘` (error, red); completed-count summary appears in the box title when there are finished agents.
-- **Session switcher** — press `n` to cycle through other live Claude Code sessions across all projects. A high-contrast yellow `VIEWING` badge in the footer reminds you that you're watching a switched session; press `r` to return to the default view for your current cwd.
+- **Session picker** — press `s` for a list of live sessions (status, entrypoint, name, cwd, age, version, last typed prompt from `history.jsonl`); `Enter` switches, `Esc` returns. `n` still cycles through them one by one. A high-contrast yellow `VIEWING` badge in the footer reminds you that you're watching a switched session; press `r` to return to the default view for your current cwd.
 
 ## Requirements
 
@@ -167,6 +169,7 @@ bun run start <sessionId>
 - `d` — expand/collapse the denial list under Tools
 - `1`–`9`, `0` — hide/show a panel (1 Last Prompt, 2 Recap, 3 Tools, 4 Background, 5 Skill, 6 Hooks, 7 Links, 8 Teams, 9 Memory, 0 Files); saved in `~/.claude/ccmonitor-ui.json`
 - `r` — force refresh (also clears any switched-session view)
+- `s` — session picker: `j`/`k` move, `Enter` switch, `Esc`/`s` back
 - `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
 - `Esc` — back to the dashboard
 - `q` / `Ctrl+C` — quit
@@ -204,7 +207,7 @@ bun run build    # outputs dist/ccmonitor
 | **Teams** | Team names and member lists |
 | **Tasks** | Task subjects with status icons (hidden when empty; task tools are off on Claude 5 models) |
 | **Memory** | Auto-memory state: MEMORY.md size, topic count, category breakdown, recent topics |
-| **File Activity** | Recent file add/change/unlink events from `~/.claude/` |
+| **File Activity** | Files edited in this session (`path vN HH:MM:SS`, external edits marked), then recent `~/.claude/` watcher events |
 
 ## Faster Skill Detection (Optional)
 

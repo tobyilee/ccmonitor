@@ -1,6 +1,7 @@
 import type { BackgroundTask, SessionState } from './types.js';
 import { mdToPlain } from './recap.js';
 import { readTaskOutputTail } from './loaders/scratchpad.js';
+import { sessionRows } from './views/sessions.js';
 import pkg from '../package.json';
 
 // ANSI escape helpers
@@ -28,7 +29,7 @@ const BG = {
 };
 const FG_PURE_WHITE = `${CSI}38;2;255;255;255m`; // #ffffff
 
-export type View = 'dashboard' | 'recap' | 'background' | 'info';
+export type View = 'dashboard' | 'recap' | 'background' | 'info' | 'sessions';
 
 export interface RenderOptions {
   isSwitchedView?: boolean;
@@ -45,6 +46,8 @@ export interface RenderOptions {
   showDenials?: boolean;
   /** Section ids hidden with the number keys (persisted in ~/.claude/ccmonitor-ui.json). */
   collapsed?: ReadonlySet<string>;
+  /** Highlighted row in the session picker. */
+  cursor?: number;
 }
 
 /** ⌨ for CLI sessions, 🖥 for Claude Desktop, nothing when unknown. */
@@ -56,9 +59,13 @@ export function entrypointIcon(entrypoint: string | null | undefined): string {
 
 const STATUS_STALE_MS = 10 * 60 * 1000;
 
-/** Registry status dot; grey `?` when the status is older than 10 minutes. */
+/**
+ * Registry status dot. An idle session legitimately keeps an old timestamp, so
+ * only a busy/waiting claim older than 10 minutes is shown as unknown (`?`).
+ */
 export function statusDot(status: string | null, statusUpdatedAt: number | null, nowMs: number): string {
-  if (statusUpdatedAt !== null && nowMs - statusUpdatedAt > STATUS_STALE_MS) return `${FG.gray}?${RESET}`;
+  const stale = statusUpdatedAt !== null && nowMs - statusUpdatedAt > STATUS_STALE_MS;
+  if (stale && (status === 'busy' || status === 'waiting')) return `${FG.gray}?${RESET}`;
   if (status === 'busy') return `${FG.yellow}●${RESET}`;
   if (status === 'waiting') return `${FG.red}●${RESET}`;
   if (status === 'idle') return `${DIM}○${RESET}`;
@@ -783,15 +790,28 @@ function sectionMemory({ state, W, now }: SectionCtx): string[] {
   return out;
 }
 
-function sectionFiles({ fileEvents, W }: SectionCtx): string[] {
+function sectionFiles({ state, fileEvents, W }: SectionCtx): string[] {
   const out: string[] = [];
   out.push(boxTop('File Activity', W, FG.gray));
-  const recentEvents = fileEvents.slice(-8);
-  if (recentEvents.length === 0) out.push(boxLine(`${DIM}(watching for changes...)${RESET}`, W, FG.gray));
+  // Session's own edits: path  vN  HH:MM:SS, newest first
+  const edited = [...state.editedFiles.values()]
+    .sort((a, b) => (b.lastEdit?.getTime() ?? 0) - (a.lastEdit?.getTime() ?? 0))
+    .slice(0, 6);
+  const cwd = state.cwd ?? '';
+  for (const f of edited) {
+    const rel = cwd && f.path.startsWith(cwd + '/') ? f.path.slice(cwd.length + 1) : f.path.replace(process.env.HOME || '', '~');
+    const ver = f.version > 0 ? `${DIM}v${f.version}${RESET}` : `${DIM}ext${RESET}`;
+    const when = f.lastEdit ? `${DIM}${formatTime(f.lastEdit)}${RESET}` : '';
+    const ext = f.external ? ` ${FG.yellow}(edited outside)${RESET}` : '';
+    const fixed = displayWidth(stripAnsi(`  ${ver} ${when}${ext}`));
+    out.push(boxLine(`${FG.white}${truncateToWidth(rel, Math.max(8, W - 4 - fixed))}${RESET}  ${ver} ${when}${ext}`, W, FG.gray));
+  }
+  const recentEvents = fileEvents.slice(-(edited.length > 0 ? 4 : 8));
+  if (edited.length === 0 && recentEvents.length === 0) out.push(boxLine(`${DIM}(watching for changes...)${RESET}`, W, FG.gray));
   for (const ev of recentEvents) {
     const evColor = ev.event === 'add' ? FG.green : ev.event === 'change' ? FG.yellow : FG.red;
     const shortPath = ev.path.replace(process.env.HOME || '', '~').slice(-(W - 22));
-    out.push(boxLine(`${evColor}${pad(ev.event, 6)}${RESET} ${DIM}${formatTime(ev.time)}${RESET} ${shortPath}`, W, FG.gray));
+    out.push(boxLine(`${DIM}${evColor}${pad(ev.event, 6)}${RESET}${DIM} ${formatTime(ev.time)} ${shortPath}${RESET}`, W, FG.gray));
   }
   out.push(boxBottom(W, FG.gray));
   return out;
@@ -863,7 +883,8 @@ function renderHeaderLines(state: SessionState, W: number, now: Date): string[] 
     : '';
   const memPart = state.processMemMb > 0 ? `${DIM} Mem:${RESET}${FG.cyan}${state.processMemMb}MB${RESET}` : '';
   const ccVersion = selfSession?.version ?? state.version;
-  const versionPart = ccVersion ? `${DIM} CC:${RESET}${FG.green}v${ccVersion}${RESET}` : '';
+  const updatePart = state.update?.available ? ` ${DIM}update available (${state.update.latest})${RESET}` : '';
+  const versionPart = ccVersion ? `${DIM} CC:${RESET}${FG.green}v${ccVersion}${RESET}${updatePart}` : '';
   lines.push(`${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}${memPart}${versionPart}`);
 
   const { input, output, cacheWrite, cacheRead } = state.tokenUsage;
@@ -874,7 +895,7 @@ function renderHeaderLines(state: SessionState, W: number, now: Date): string[] 
     `${FG.magenta}O:${formatTokens(output)}${RESET} ` +
     `${FG.yellow}CW:${formatTokens(cacheWrite)}${RESET} ` +
     `${FG.green}CR:${formatTokens(cacheRead)}${RESET}` +
-    `${DIM} Files:${RESET}${FG.yellow}${state.editedFilesCount}${RESET}`,
+    `${DIM} Files:${RESET}${FG.yellow}${filesCount(state)}${RESET}`,
   );
 
   const cost = costLine(state);
@@ -922,17 +943,27 @@ function renderHeaderLines(state: SessionState, W: number, now: Date): string[] 
   return lines;
 }
 
+/** Files edited: file-history count and transcript-derived count; `~` when they disagree. */
+function filesCount(state: SessionState): string {
+  const a = state.editedFilesCount;
+  const b = state.editedFiles.size;
+  if (a === b || b === 0) return `${a}`;
+  if (a === 0) return `${b}`;
+  return `~${Math.max(a, b)}`;
+}
+
 function renderFooter(state: SessionState, opts: RenderOptions): string {
   const canSwitch = state.activeSessions.length > 1;
   const nextHint = canSwitch ? ` ${BOLD}n${RESET}${DIM}:next${RESET}` : '';
   const bgHint = state.backgroundTasks.size > 0 ? ` ${BOLD}b${RESET}${DIM}:background${RESET}` : '';
   const dHint = state.permissions.decisions.reject > 0 ? ` ${BOLD}d${RESET}${DIM}:denials${RESET}` : '';
+  const sHint = state.activeSessions.length > 1 ? ` ${BOLD}s${RESET}${DIM}:sessions${RESET}` : '';
   const hidden = SECTIONS.filter(s => opts.collapsed?.has(s.id)).map(s => s.key);
   const hiddenHint = hidden.length > 0 ? ` ${DIM}hidden:${hidden.join(',')}${RESET}` : '';
   const switchedBadge = opts.isSwitchedView
     ? ` ${BG.yellow}${FG.black}${BOLD} VIEWING ${RESET}${FG.yellow}${BOLD} press r to return${RESET}`
     : '';
-  return `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${nextHint}${DIM} | auto 2s${RESET}${hiddenHint}${switchedBadge}`;
+  return `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${sHint}${nextHint}${DIM} | auto 2s${RESET}${hiddenHint}${switchedBadge}`;
 }
 
 /** Pure dashboard renderer: header + every non-collapsed Section + footer. */
@@ -1108,6 +1139,14 @@ export function renderInfoViewLines(state: SessionState | null, opts: RenderOpti
     for (const c of state.localCommands) row(c.time ? formatTime(c.time) : '?', `${c.command} ${DIM}${c.args}${RESET}`);
   }
 
+  if (state.update) {
+    head(`Claude Code update${state.update.available ? ` ${FG.yellow}(available: ${state.update.latest})${RESET}` : state.update.latest ? ` ${DIM}(latest ${state.update.latest})${RESET}` : ''}`);
+    if (state.update.changelog) {
+      row('version', state.update.changelog.version);
+      for (const b of state.update.changelog.bullets) body.push(truncateAnsi(`   ${DIM}-${RESET} ${b}`, W));
+    }
+  }
+
   if (state.modelCatalog) {
     head(`Model catalog${state.modelCatalog.fetchedAt ? ` ${DIM}(fetched ${formatTime(state.modelCatalog.fetchedAt)})${RESET}` : ''}`);
     for (const m of state.modelCatalog.models) {
@@ -1116,6 +1155,35 @@ export function renderInfoViewLines(state: SessionState | null, opts: RenderOpti
   }
 
   return [...lines, ...scrollWindow(body, opts.scroll ?? 0, H, W, footer)];
+}
+
+/** Full-screen session picker: name, cwd, status, version, entrypoint, age, last prompt. */
+export function renderSessionsViewLines(state: SessionState | null, opts: RenderOptions = {}): string[] {
+  const W = opts.width ?? Math.max(20, (process.stdout.columns || 80) - 1);
+  const H = opts.height ?? (process.stdout.rows || 40);
+  const now = opts.now ?? new Date();
+  const lines = [titleBar(W, now), pathLine(state, W)];
+  const footer = `${DIM} ${BOLD}Enter${RESET}${DIM}:switch ${BOLD}Esc${RESET}${DIM}/${BOLD}s${RESET}${DIM}:back ${BOLD}j${RESET}${DIM}/${BOLD}k${RESET}${DIM}:move ${BOLD}r${RESET}${DIM}:cwd default ${BOLD}q${RESET}${DIM}:quit${RESET}`;
+  if (!state) return [...lines, '', `${DIM}(no session)${RESET}`, footer];
+  const rows = sessionRows(state);
+  const body: string[] = [];
+  if (rows.length === 0) body.push(` ${DIM}(no live sessions)${RESET}`);
+  const cursor = Math.min(Math.max(0, opts.cursor ?? 0), Math.max(0, rows.length - 1));
+  rows.forEach((r, i) => {
+    const sel = i === cursor;
+    const mark = sel ? `${FG.cyan}▶${RESET}` : ' ';
+    const cur = r.isCurrent ? `${FG.green}*${RESET}` : ' ';
+    const dot = statusDot(r.session.status, r.session.statusUpdatedAt, now.getTime()) || ' ';
+    const icon = entrypointIcon(r.session.entrypoint) || ' ';
+    const age = formatDurationCompact(now.getTime() - r.session.startedAt.getTime());
+    const ver = r.session.version ? `v${r.session.version}` : '';
+    const head = `${mark}${cur}${dot} ${icon} ${pad(truncateToWidth(r.label, 24), 24)} ${pad(truncateToWidth(r.cwdBase, 16), 16)} ${rpad(age, 6)} ${DIM}${pad(ver, 9)}${RESET} `;
+    const room = Math.max(8, W - displayWidth(stripAnsi(head)) - 1);
+    const prompt = r.lastPrompt ? truncateToWidth(r.lastPrompt.replace(/\s+/g, ' '), room) : '';
+    const line = `${head}${sel ? FG.white : DIM}${prompt}${RESET}`;
+    body.push(sel ? `${BOLD}${line}${RESET}` : line);
+  });
+  return [...lines, ...scrollWindow(body, Math.max(0, cursor - (H - 6)), H, W, footer)];
 }
 
 // ---------------------------------------------------------------------------
@@ -1135,7 +1203,9 @@ export function render(
       ? renderBackgroundViewLines(state, o)
       : view === 'info'
         ? renderInfoViewLines(state, o)
-        : renderDashboardLines(state, fileEvents, o);
+        : view === 'sessions'
+          ? renderSessionsViewLines(state, o)
+          : renderDashboardLines(state, fileEvents, o);
   process.stdout.write(CLEAR + HIDE_CURSOR + lines.join('\n') + '\n');
 }
 

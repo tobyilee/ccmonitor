@@ -3,7 +3,7 @@
  Session:⌨ recap-ba Model:fable-5-1 Effort:high Ctx:9% Age:1h 38m Idle:1h 25m
  Turn:#2 done 30s · avg 2m49s · █▁ Mode:auto(bash-first)
  Sess:0 CC:v2.1.296
- Msgs:U:18 A:18 Tok:I:516 O:23.7K CW:66.4K CR:1.3M Files:0
+ Msgs:U:18 A:18 Tok:I:516 O:23.7K CW:66.4K CR:1.3M Files:4
  Rate:112.6K/min Compact:0 Peak:92.2K Think:12.3s ⣶⣶⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
 ┌─ Last Prompt  03:31:01 ──────────────────────────────────────────────────────────────────────────┐
 │ cm                                                                                               │
@@ -38,6 +38,9 @@
 │ (no memory yet)                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ File Activity ──────────────────────────────────────────────────────────────────────────────────┐
-│ (watching for changes...)                                                                        │
+│ /Users/dev/.claude/CLAUDE.md  v1 03:29:00                                                        │
+│ CLAUDE.md  ext 03:28:51 (edited outside)                                                         │
+│ scripts/pr.test.sh  v1 03:27:42                                                                  │
+│ scripts/pr.sh  v1 03:27:02                                                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  q:quit r:refresh c:recap d:denials i:info | auto 2s

@@ -218,6 +218,8 @@ export interface AvailableSession {
   statusUpdatedAt: number | null;
   /** Unix socket for cross-session messaging. Null on old versions. */
   messagingSocketPath: string | null;
+  /** Registry `updatedAt` (epoch ms). Null on old versions. */
+  updatedAt: number | null;
 }
 
 export interface MemoryInfo {
@@ -441,6 +443,15 @@ export interface ModelCatalogInfo {
   fetchedAt: Date | null;
 }
 
+export interface UpdateInfo {
+  /** Newest `version_to` from .last-update-result.json. */
+  latest: string | null;
+  /** True when `latest` is newer than the running session's version. */
+  available: boolean;
+  /** First bullets of the newest cached changelog section. */
+  changelog: { version: string; bullets: string[] } | null;
+}
+
 export interface EditedFile {
   path: string;
   version: number;
@@ -561,4 +572,8 @@ export interface SessionState {
 
   // --- v1.9 ---
   editedFiles: Map<string, EditedFile>;
+  /** Last typed prompt per live session (from history.jsonl). Loader-filled. */
+  sessionPrompts: Map<string, { display: string; time: Date | null; project: string | null }>;
+  /** Claude Code update status. Loader-filled. */
+  update: UpdateInfo | null;
 }

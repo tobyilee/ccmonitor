@@ -192,6 +192,12 @@ function promoteActiveSkill(state: SessionState, endTime: Date): void {
   state.activeSkill = null;
 }
 
+/** file-history-delta paths are cwd-relative; Write/Edit results are absolute. Use one key. */
+function absolutePath(path: string, cwd: string | null): string {
+  if (path.startsWith('/') || !cwd) return path;
+  return `${cwd.replace(/\/$/, '')}/${path}`;
+}
+
 function resolveTitle(state: SessionState): void {
   const t = state.titleSources;
   state.sessionTitle = t.custom ?? t.agent ?? t.ai;
@@ -441,7 +447,8 @@ function handleAttachment(s: ParseSession, entry: TranscriptEntry, time: Date | 
       };
       break;
     case 'edited_text_file': {
-      const file = str(att.filename);
+      const raw = str(att.filename);
+      const file = raw ? absolutePath(raw, state.cwd) : null;
       if (file) {
         const existing = state.editedFiles.get(file);
         if (existing) existing.external = true;
@@ -786,7 +793,8 @@ function handleToolUseResult(
 
   // Edited files (Write/Edit carry filePath in the structured result)
   if (r && (toolName === 'Write' || toolName === 'Edit')) {
-    const filePath = str(r.filePath);
+    const rawPath = str(r.filePath);
+    const filePath = rawPath ? absolutePath(rawPath, state.cwd) : null;
     if (filePath) {
       const existing = state.editedFiles.get(filePath);
       if (existing) {
@@ -965,8 +973,9 @@ function handleFrameLink(state: SessionState, entry: TranscriptEntry): void {
 }
 
 function handleFileHistoryDelta(state: SessionState, entry: TranscriptEntry): void {
-  const path = str(entry.trackingPath);
-  if (!path) return;
+  const raw = str(entry.trackingPath);
+  if (!raw) return;
+  const path = absolutePath(raw, state.cwd);
   const version = num(entry.backup?.version) ?? 1;
   const when = entry.backup?.backupTime ? new Date(entry.backup.backupTime) : null;
   const existing = state.editedFiles.get(path);

@@ -40,14 +40,15 @@ When the user says `upgrade`:
 
 No external UI framework — raw ANSI escape codes to stdout. Parsing is split into a pure layer and disk loaders:
 
-- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), chokidar watcher, keyboard (q/r/n/c/b/i/d/1-9/0/Esc/j/k), view state (`dashboard | recap | background | info`), collapsed-section prefs (`src/uiPrefs.ts` → `~/.claude/ccmonitor-ui.json`), 2-second refresh loop. Holds one `TranscriptReader` per transcript file.
+- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), chokidar watcher, keyboard (q/r/n/s/c/b/i/d/1-9/0/Enter/Esc/j/k), view state (`dashboard | recap | background | info | sessions`), collapsed-section prefs (`src/uiPrefs.ts` → `~/.claude/ccmonitor-ui.json`), 2-second refresh loop. Holds one `TranscriptReader` per transcript file.
 - **parser.ts** — Orchestration. `parseTranscriptLines(lines, ctx)` (pure), `enrichSessionState(state)` (runs the loaders on a copy), `TranscriptReader` (incremental tail reads; full reparse when the file shrinks or its first 64 bytes change), `locate*Session` helpers, `computeDerived`.
 - **entry.ts** — The pure per-entry state machine (`processEntry` + `handleSystem` / `handleAttachment` / `handleAssistant` / `handleUser` …). Groups assistant lines by `message.id`, opens/closes turns, tracks background tasks, recap text, hooks, permissions, cost, links, queue, attribution, errors. Reports unknown `type` / `system.subtype` / `attachment.type` values through `ctx.onUnknown`.
 - **state.ts** — `createSessionState`, `ParseMemo` (parser working memory), `ParseSession`.
 - **recap.ts** — Pure text helpers: `extractKoreanRecap`, `mdToPlain`, `parseTaskNotification`, `cleanNativeRecap`.
-- **loaders/** — One file per disk source (subagents, teams, tasks, skillHook, git, fileHistory, sessions, memory, effort, rateLimit, process, scratchpad, globalConfig, modelCatalog, plans, feedback). `paths.ts` holds `CLAUDE_DIR` (override with `CCMONITOR_CLAUDE_DIR`).
+- **loaders/** — One file per disk source (subagents, teams, tasks, skillHook, git, fileHistory, sessions, memory, effort, rateLimit, process, scratchpad, globalConfig, modelCatalog, plans, feedback, history, update).
+- **views/sessions.ts** — pure row builder for the session picker. `paths.ts` holds `CLAUDE_DIR` (override with `CCMONITOR_CLAUDE_DIR`).
 - **types.ts** — All TypeScript interfaces. `SessionState` is the central data structure; `TranscriptEntry` models the JSONL schema.
-- **ui.ts** — Pure rendering. The dashboard is header + `SECTIONS` (each a `Section {id, key, title, render}`) + footer; `renderDashboardLines` / `renderRecapViewLines` / `renderBackgroundViewLines` / `renderInfoViewLines` return `string[]`; `render()` writes to stdout. Adding a panel = appending to `SECTIONS`. Handles CJK fullwidth and emoji widths. No state mutation.
+- **ui.ts** — Pure rendering. The dashboard is header + `SECTIONS` (each a `Section {id, key, title, render}`) + footer; `renderDashboardLines` / `renderRecapViewLines` / `renderBackgroundViewLines` / `renderInfoViewLines` / `renderSessionsViewLines` return `string[]`; `render()` writes to stdout. Adding a panel = appending to `SECTIONS`. Handles CJK fullwidth and emoji widths. No state mutation.
 - **unknownFields.ts** — Appends unknown kinds to `~/.claude/ccmonitor-unknown-fields.log`.
 
 ### Key Design Decisions
@@ -79,6 +80,8 @@ The monitor reads these paths (documented in detail in `filegen.md`):
 | `plans/<slug>.md` (or `settings.plansDirectory`) | Plan-mode output for the session slug |
 | `feedback/drafts/*.json` | SendFeedback drafts (`source_session_id`) |
 | `ccmonitor-ui.json` | Collapsed panel preferences (written by ccmonitor) |
+| `history.jsonl` | Typed prompts across projects (last prompt per session in the picker) |
+| `.last-update-result.json`, `cache/changelog.md` | Update awareness |
 | `~/.claude.json` → `projects[cwd].lastCost` | Previous-session cost fallback |
 | `/private/tmp/claude-<uid>/<proj>/<sid>/tasks/<id>.output` | Background task output (path from the `environment` attachment / `toolUseResult.outputFile`) |
 

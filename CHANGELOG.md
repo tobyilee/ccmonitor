@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-10-10
+
+### Added
+- **Session picker (F13).** `s` opens a full-screen list of live Claude Code sessions sorted by registry `updatedAt`: cursor, current-session mark `*`, status dot, `⌨`/`🖥` entrypoint, name, cwd basename, age, version, and the last typed prompt from `~/.claude/history.jsonl` (only the file's tail is read). `j`/`k` move, `Enter` switches the dashboard to that session (the `VIEWING` badge appears, `r` returns to the cwd default), `Esc`/`s` go back. `n` still cycles.
+- **File activity upgrade (F14).** The File Activity box now lists the session's own edits first: `src/parser.ts  v3  13:31:05`, newest first, built from `file-history-delta` (version numbers) and Write/Edit results, with `(edited outside)` for files Claude Code noticed were changed externally (`edited_text_file`). Relative delta paths and absolute tool paths resolve to one row. Watcher events for `~/.claude` follow as a dim sub-list. The header `Files:` chip shows `~N` when the file-history directory and the transcript disagree.
+- **Update awareness (F15).** `update available (x.y.z)` dim after `CC:v…` when `.last-update-result.json` (override with `CCMONITOR_UPDATE_FILE`) names a newer version than the running session; the `i` view lists the first 5 bullets of the newest section of `~/.claude/cache/changelog.md`.
+
+### Changed
+- A grey `?` status dot now means a *busy/waiting* claim older than 10 minutes; idle sessions keep their `○` even when the timestamp is old (an idle session never refreshes it).
+- Registry entries carry `updatedAt`.
+
+### Not included
+- F16 (scheduled tasks, background `attached`/`unattended` sessions) stays out: no fixture exists on this machine yet. The picker already shows the registry `kind` field in the `i` view.
+
 ## [1.8.0] - 2026-10-10
 
 ### Added

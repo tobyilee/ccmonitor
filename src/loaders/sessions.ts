@@ -55,6 +55,7 @@ export function parseRegistryEntry(data: Record<string, unknown>): AvailableSess
     nameSource: s('nameSource'),
     statusUpdatedAt: typeof data.statusUpdatedAt === 'number' ? data.statusUpdatedAt : null,
     messagingSocketPath: s('messagingSocketPath'),
+    updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : null,
   };
 }
 
