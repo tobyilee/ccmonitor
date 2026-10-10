@@ -4,7 +4,7 @@
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
-Watches `~/.claude/` data files and displays live activity — a recap of what Claude just did, turn timing, background agents and commands, tool usage, skills, token consumption, and file changes.
+Reads `~/.claude/` data files every 2 seconds and displays live activity — a recap of what Claude just did, turn timing, background agents and commands, tool usage, skills, token consumption, and the git working-tree status of the project.
 
 ## Screenshot
 
@@ -109,6 +109,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ## Requirements
 
 - [Bun](https://bun.sh/) v1.0+
+- `git` on `PATH` (optional; without it the Git Status box shows `(not a git repository)`)
 
 ## Install
 
@@ -232,12 +233,13 @@ Install the PostToolUse hook for near-instant skill completion updates:
 - [`docs/spec-v2-session-state.md`](./docs/spec-v2-session-state.md) — what changed in Claude Code 2.1.220 → 2.1.296 on disk, every data source, and the design of features F1–F16.
 - [`docs/implementation-plan-v2.md`](./docs/implementation-plan-v2.md) — the 31-task plan with a Verify block per task.
 - [`docs/verification-v2.md`](./docs/verification-v2.md) — how each task was verified, with the final check outputs.
+- [`docs/plan-git-status-panel.md`](./docs/plan-git-status-panel.md) — the v1.10.0 Git Status box: plan and verification record.
 - [`CLAUDE.md`](./CLAUDE.md) — architecture and conventions for contributors.
 - [`filegen.md`](./filegen.md) — reference for the files Claude Code writes under `~/.claude/`.
 
 ## How It Works
 
-ccmonitor is **fully decoupled** from Claude Code — it imports nothing from the Claude Code codebase. Instead, it reads the file artifacts that Claude Code produces under `~/.claude/`, using two data channels: **JSONL transcript parsing** and **disk file scanning**.
+ccmonitor is **fully decoupled** from Claude Code — it imports nothing from the Claude Code codebase. Instead, it reads the file artifacts that Claude Code produces under `~/.claude/`, using three data channels: **JSONL transcript parsing**, **disk file scanning**, and one `git status` call per refresh window.
 
 ### Overview
 
