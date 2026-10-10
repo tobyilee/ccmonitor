@@ -59,9 +59,10 @@ let selectedSession: { cwd: string; sessionId: string } | null = null;
 /** Current screen: dashboard, or one of the full-screen views (c / b). */
 let view: View = 'dashboard';
 let scroll = 0;
+let showDenials = false;
 
 function draw(): void {
-  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll });
+  render(state, fileEvents, { isSwitchedView: selectedSession !== null, view, scroll, showDenials });
 }
 
 function setView(next: View): void {
@@ -173,6 +174,12 @@ if (process.stdin.isTTY) {
         break;
       case 'b':
         setView('background');
+        break;
+      case 'i':
+        setView('info');
+        break;
+      case 'd':
+        showDenials = !showDenials;
         break;
       case '\x1b': // Esc
         view = 'dashboard';

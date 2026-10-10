@@ -4,7 +4,7 @@ import { join } from 'path';
 import { parseTranscriptLines, computeDerived } from './parser.js';
 import {
   displayWidth, wordWrap, stripAnsi, truncateToWidth, formatDurationCompact,
-  renderDashboardLines, renderRecapViewLines, renderBackgroundViewLines,
+  renderDashboardLines, renderRecapViewLines, renderBackgroundViewLines, renderInfoViewLines, statusDot, entrypointIcon,
 } from './ui.js';
 import type { SessionState } from './types.js';
 
@@ -75,6 +75,8 @@ describe.skipIf(!existsSync(FIX))('width sweep over fixtures', () => {
         assertFits(renderDashboardLines(s, [], { now: NOW, width: W }), W, name);
         assertFits(renderRecapViewLines(s, { now: NOW, width: W, height: 40 }), W, `${name} recap view`);
         assertFits(renderBackgroundViewLines(s, { now: NOW, width: W, height: 40 }), W, `${name} background view`);
+        assertFits(renderInfoViewLines(s, { now: NOW, width: W, height: 40 }), W, `${name} info view`);
+        assertFits(renderDashboardLines(s, [], { now: NOW, width: W, showDenials: true }), W, `${name} denials`);
       });
     }
   }
@@ -125,5 +127,60 @@ describe.skipIf(!existsSync(join(FIX, 'recap-basic.jsonl')))('recap panel conten
     expect(top).toHaveLength(12);
     expect(down[2]).toBe(top[5]);
     expect(far[far.length - 1]).toMatch(/\[\d+-\d+\/\d+\]$/);
+  });
+});
+
+describe.skipIf(!existsSync(join(FIX, 'background.jsonl')))('phase 2 panels', () => {
+  test('cost fixture renders the Cost line with per-model parts', () => {
+    const s = loadState('cost');
+    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    const line = plain.find(l => l.startsWith(' Cost:$'));
+    expect(line).toBeDefined();
+    expect(line).toContain('opus-5-5:$');
+    expect(line).toContain('API:');
+  });
+
+  test('compaction fixture shows the exact compaction detail', () => {
+    const s = loadState('compaction');
+    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    expect(plain.some(l => l.includes('Compact:2 (manual 500.4K→12.1K)'))).toBe(true);
+    expect(plain.some(l => l.includes('RC●'))).toBe(true);
+    const info = renderInfoViewLines(s, { now: NOW, width: 100, height: 60 }).map(stripAnsi);
+    expect(info.some(l => l.includes('https://claude.ai/code/session_01VZC8GyRsaCCBz48ySKtCbA'))).toBe(true);
+    expect(info.some(l => l.includes('manual 535.0K→13.8K'))).toBe(true);
+  });
+
+  test('background fixture shows Mode chip, Denied strip, Hooks box', () => {
+    const s = loadState('background');
+    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    expect(plain.some(l => l.includes('Mode:auto(bash-first)'))).toBe(true);
+    expect(plain.some(l => /^│ Denied:1 \(hook 1\) \(d\)/.test(l))).toBe(true);
+    const hooks = plain.find(l => l.startsWith('┌─ Hooks'));
+    expect(hooks).toBeDefined();
+    const hooksBody = plain[plain.indexOf(hooks!) + 1] ?? '';
+    expect(hooksBody).toMatch(/PreToolUse:\d+/);
+    expect(hooksBody).toContain('errors:0');
+    const expanded = renderDashboardLines(s, [], { now: NOW, width: 100, showDenials: true }).map(stripAnsi);
+    expect(expanded.some(l => l.includes('Bash permission-rule') && l.includes('BLOCKED by'))).toBe(true);
+  });
+
+  test('links fixture: desktop icon and custom title in the header', () => {
+    const s = loadState('links');
+    const plain = renderDashboardLines(s, [], { now: NOW, width: 100 }).map(stripAnsi);
+    expect(plain[1]).toContain('Kotlin 1.9에서 2.4로 마이그레이션 가이드');
+    expect(plain[2]).toContain('Session:🖥 links');
+    const info = renderInfoViewLines(s, { now: NOW, width: 100, height: 60 }).map(stripAnsi);
+    expect(info.some(l => l.includes('PR #158') && l.includes('bizmatrixx/bzflow'))).toBe(true);
+    expect(info.some(l => l.includes('Kotlin 1.9 → 2.4'))).toBe(true);
+  });
+
+  test('status dots and icons', () => {
+    const now = Date.parse('2026-10-10T05:00:00Z');
+    expect(stripAnsi(statusDot('busy', now - 1000, now))).toBe('●');
+    expect(stripAnsi(statusDot('idle', now - 1000, now))).toBe('○');
+    expect(stripAnsi(statusDot('busy', now - 11 * 60 * 1000, now))).toBe('?');
+    expect(entrypointIcon('cli')).toBe('⌨');
+    expect(entrypointIcon('claude-desktop')).toBe('🖥');
+    expect(entrypointIcon(null)).toBe('');
   });
 });

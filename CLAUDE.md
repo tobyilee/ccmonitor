@@ -40,14 +40,14 @@ When the user says `upgrade`:
 
 No external UI framework — raw ANSI escape codes to stdout. Parsing is split into a pure layer and disk loaders:
 
-- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), chokidar watcher, keyboard (q/r/n/c/b/Esc/j/k), view state (`dashboard | recap | background`), 2-second refresh loop. Holds one `TranscriptReader` per transcript file.
+- **index.ts** — Entry point. CLI args (`[sessionId]`, `--fixture`), chokidar watcher, keyboard (q/r/n/c/b/i/d/Esc/j/k), view state (`dashboard | recap | background | info`), 2-second refresh loop. Holds one `TranscriptReader` per transcript file.
 - **parser.ts** — Orchestration. `parseTranscriptLines(lines, ctx)` (pure), `enrichSessionState(state)` (runs the loaders on a copy), `TranscriptReader` (incremental tail reads; full reparse when the file shrinks or its first 64 bytes change), `locate*Session` helpers, `computeDerived`.
 - **entry.ts** — The pure per-entry state machine (`processEntry` + `handleSystem` / `handleAttachment` / `handleAssistant` / `handleUser` …). Groups assistant lines by `message.id`, opens/closes turns, tracks background tasks, recap text, hooks, permissions, cost, links, queue, attribution, errors. Reports unknown `type` / `system.subtype` / `attachment.type` values through `ctx.onUnknown`.
 - **state.ts** — `createSessionState`, `ParseMemo` (parser working memory), `ParseSession`.
 - **recap.ts** — Pure text helpers: `extractKoreanRecap`, `mdToPlain`, `parseTaskNotification`, `cleanNativeRecap`.
-- **loaders/** — One file per disk source (subagents, teams, tasks, skillHook, git, fileHistory, sessions, memory, effort, rateLimit, process, scratchpad). `paths.ts` holds `CLAUDE_DIR` (override with `CCMONITOR_CLAUDE_DIR`).
+- **loaders/** — One file per disk source (subagents, teams, tasks, skillHook, git, fileHistory, sessions, memory, effort, rateLimit, process, scratchpad, globalConfig, modelCatalog). `paths.ts` holds `CLAUDE_DIR` (override with `CCMONITOR_CLAUDE_DIR`).
 - **types.ts** — All TypeScript interfaces. `SessionState` is the central data structure; `TranscriptEntry` models the JSONL schema.
-- **ui.ts** — Pure rendering. `renderDashboardLines` / `renderRecapViewLines` / `renderBackgroundViewLines` return `string[]`; `render()` writes to stdout. Handles CJK fullwidth and emoji widths. No state mutation.
+- **ui.ts** — Pure rendering. `renderDashboardLines` / `renderRecapViewLines` / `renderBackgroundViewLines` / `renderInfoViewLines` return `string[]`; `render()` writes to stdout. Handles CJK fullwidth and emoji widths. No state mutation.
 - **unknownFields.ts** — Appends unknown kinds to `~/.claude/ccmonitor-unknown-fields.log`.
 
 ### Key Design Decisions
@@ -75,6 +75,8 @@ The monitor reads these paths (documented in detail in `filegen.md`):
 | `tasks/<sessionId>/*.json` | Task/TODO data |
 | `sessions/<pid>.json` | Active session registry |
 | `.omc/state/last-skill-complete.json` | Hook-written skill completion signal (optional) |
+| `cache/model-catalog/*.json` | Model list, effort options, fast-mode flags |
+| `~/.claude.json` → `projects[cwd].lastCost` | Previous-session cost fallback |
 | `/private/tmp/claude-<uid>/<proj>/<sid>/tasks/<id>.output` | Background task output (path from the `environment` attachment / `toolUseResult.outputFile`) |
 
 ### Hook Script

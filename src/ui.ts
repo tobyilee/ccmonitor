@@ -28,7 +28,7 @@ const BG = {
 };
 const FG_PURE_WHITE = `${CSI}38;2;255;255;255m`; // #ffffff
 
-export type View = 'dashboard' | 'recap' | 'background';
+export type View = 'dashboard' | 'recap' | 'background' | 'info';
 
 export interface RenderOptions {
   isSwitchedView?: boolean;
@@ -41,6 +41,48 @@ export interface RenderOptions {
   width?: number;
   /** Height override for tests (full-screen views). */
   height?: number;
+  /** `d` toggles the expanded denial list under Tools. */
+  showDenials?: boolean;
+}
+
+/** ⌨ for CLI sessions, 🖥 for Claude Desktop, nothing when unknown. */
+export function entrypointIcon(entrypoint: string | null | undefined): string {
+  if (entrypoint === 'claude-desktop') return '🖥';
+  if (entrypoint === 'cli') return '⌨';
+  return '';
+}
+
+const STATUS_STALE_MS = 10 * 60 * 1000;
+
+/** Registry status dot; grey `?` when the status is older than 10 minutes. */
+export function statusDot(status: string | null, statusUpdatedAt: number | null, nowMs: number): string {
+  if (statusUpdatedAt !== null && nowMs - statusUpdatedAt > STATUS_STALE_MS) return `${FG.gray}?${RESET}`;
+  if (status === 'busy') return `${FG.yellow}●${RESET}`;
+  if (status === 'waiting') return `${FG.red}●${RESET}`;
+  if (status === 'idle') return `${DIM}○${RESET}`;
+  return '';
+}
+
+function modeChip(state: SessionState): string {
+  const mode = state.permissions.mode;
+  if (!mode) return '';
+  const color = mode === 'auto' ? FG.cyan : mode === 'plan' ? FG.magenta : mode === 'bypassPermissions' ? FG.red : FG.white;
+  const flags: string[] = [];
+  if (mode === 'auto' && state.permissions.autoMode) {
+    if (state.permissions.autoMode.bashFirst) flags.push('bash-first');
+    if (state.permissions.autoMode.bypass) flags.push('bypass');
+  }
+  return `${DIM} Mode:${RESET}${color}${mode}${flags.length ? `(${flags.join(',')})` : ''}${RESET}`;
+}
+
+function rcChip(state: SessionState): string {
+  const rc = state.remoteControl;
+  if (!rc.url && !rc.bridgeSessionId && !rc.active) return '';
+  return rc.active ? ` ${FG.green}RC●${RESET}` : ` ${DIM}RC○${RESET}`;
+}
+
+function formatUsd(v: number): string {
+  return `$${v.toFixed(2)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,12 +360,13 @@ function pathLine(state: SessionState | null, W: number): string {
 function turnLine(state: SessionState, now: Date): string | null {
   const t = state.currentTurn;
   const closed = state.turns.filter(x => x.durationMs !== null);
-  if (!t && closed.length === 0) return null;
+  const chips = `${modeChip(state)}${rcChip(state)}`;
+  if (!t && closed.length === 0) return chips ? chips : null;
   if (t) {
     const elapsed = formatDurationCompact(now.getTime() - t.startedAt.getTime());
     const originTag = t.origin === 'human' ? '' : ` ${DIM}(${t.origin.replace('_', ' ')})${RESET}`;
     return `${DIM} Turn:${RESET}${FG.yellow}#${t.index}${RESET} ${FG.yellow}⏱ ${elapsed}${RESET} ${FG.yellow}(open)${RESET}${originTag}` +
-      `${DIM} tools:${RESET}${t.toolCalls}`;
+      `${DIM} tools:${RESET}${t.toolCalls}${chips}`;
   }
   const last = closed[closed.length - 1]!;
   const durations = closed.slice(-10).map(x => x.durationMs ?? 0);
@@ -331,7 +374,44 @@ function turnLine(state: SessionState, now: Date): string | null {
   const spark = durations.length > 1 ? ` ${DIM}·${RESET} ${FG.cyan}${blockSparkline(durations)}${RESET}` : '';
   return `${DIM} Turn:${RESET}${FG.cyan}#${last.index}${RESET} ${DIM}done${RESET} ${formatDurationCompact(last.durationMs ?? 0)}` +
     ` ${DIM}· avg${RESET} ${formatDurationCompact(avg)}${spark}` +
-    (state.pendingBackgroundAgents > 0 ? ` ${DIM}· bg:${RESET}${FG.yellow}${state.pendingBackgroundAgents}${RESET}` : '');
+    (state.pendingBackgroundAgents > 0 ? ` ${DIM}· bg:${RESET}${FG.yellow}${state.pendingBackgroundAgents}${RESET}` : '') + chips;
+}
+
+/** `Cost:$1.03 API:1m23s Tools:1.3s +12/-3 fable-5-1:$1.03 haiku:$0.00`. */
+function costLine(state: SessionState): string | null {
+  const c = state.cost;
+  if (!c) return null;
+  const color = c.hasUnknownModelCost ? FG.red : FG.green;
+  const models = Object.entries(c.perModel)
+    .sort((a, b) => b[1] - a[1])
+    .map(([m, v]) => `${DIM}${shortModel(m)}:${RESET}${formatUsd(v)}`)
+    .join(' ');
+  const lines = c.linesAdded || c.linesRemoved ? ` ${FG.green}+${c.linesAdded}${RESET}${DIM}/${RESET}${FG.red}-${c.linesRemoved}${RESET}` : '';
+  const prev = c.isPrevious ? ` ${DIM}(prev session)${RESET}` : '';
+  return `${DIM} Cost:${RESET}${color}${formatUsd(c.totalUSD)}${RESET}` +
+    `${DIM} API:${RESET}${formatDurationCompact(c.apiDurationMs)}` +
+    `${DIM} Tools:${RESET}${(c.toolDurationMs / 1000).toFixed(1)}s` +
+    lines + (models ? ` ${models}` : '') + prev;
+}
+
+export function renderHooksBox(state: SessionState, W: number): string[] {
+  const h = state.hooks;
+  if (h.total === 0) return [];
+  const color = h.stopBlocked || h.errors.length > 0 ? FG.red : FG.cyan;
+  const out = [boxTop('Hooks', W, color)];
+  const events = Object.entries(h.byEvent)
+    .sort((a, b) => b[1] - a[1])
+    .map(([ev, n]) => `${FG.green}${ev}${RESET}${DIM}:${n}${RESET}`)
+    .join(' ');
+  const errs = h.errors.length > 0 ? `  ${FG.red}errors:${h.errors.length}${RESET}` : `  ${DIM}errors:0${RESET}`;
+  const blocked = h.stopBlocked ? `  ${BG.yellow}${FG.black}${BOLD} STOP BLOCKED ${RESET}` : '';
+  out.push(boxLine(truncateAnsi(`${events}${errs}${blocked}`, W - 4), W, color));
+  for (const e of h.errors.slice(-2)) {
+    const when = e.time ? `${formatTime(e.time)} ` : '';
+    out.push(boxLine(truncateAnsi(`${FG.red}✗${RESET} ${DIM}${when}${RESET}${e.hookName} ${DIM}exit ${e.exitCode}${RESET} ${e.stderr}`, W - 4), W, color));
+  }
+  out.push(boxBottom(W, color));
+  return out;
 }
 
 const RECAP_MAX_LINES = 8;
@@ -485,8 +565,11 @@ export function renderDashboardLines(
   })();
   const effortLabel = state.effortLevel === 'xhigh' ? 'max' : state.effortLevel;
   const effortPart = state.effortLevel ? `${DIM} Effort:${RESET}${effortColor}${effortLabel}${RESET}` : '';
+  const selfSession = state.activeSessions.find(s => s.sessionId === state.sessionId);
+  const icon = entrypointIcon(selfSession?.entrypoint ?? state.entrypoint);
+  const slugPart = state.slug ? `${DIM}·${state.slug}${RESET}` : '';
   lines.push(
-    `${DIM} Session:${RESET}${FG.cyan}${state.sessionId.slice(0, 8)}${RESET}` +
+    `${DIM} Session:${RESET}${icon ? `${icon} ` : ''}${FG.cyan}${state.sessionId.slice(0, 8)}${RESET}${slugPart}` +
     `${DIM} Model:${RESET}${FG.green}${shortModel(state.model)}${RESET}` +
     effortPart +
     `${DIM} Ctx:${RESET}${ctxColor}${ctxPct}%${RESET}` +
@@ -502,21 +585,15 @@ export function renderDashboardLines(
   const others = state.activeSessions.filter(s => s.sessionId !== state.sessionId && s.cwd);
   const sessionChip = (s: typeof others[number]): string => {
     const label = s.name ?? (s.cwd.split('/').pop() || '?');
-    const dot = s.status === 'busy'
-      ? `${FG.yellow}●${RESET}`
-      : s.status === 'waiting'
-        ? `${FG.red}●${RESET}`
-        : s.status === 'idle'
-          ? `${DIM}○${RESET}`
-          : '';
-    return `${dot}${DIM}${label}${RESET}`;
+    const dot = statusDot(s.status, s.statusUpdatedAt, now.getTime());
+    const ic = s.entrypoint === 'claude-desktop' ? '🖥' : '';
+    return `${dot}${ic}${DIM}${label}${RESET}`;
   };
   const MAX_PROJECTS_SHOWN = 4;
   const otherProjectsDisplay = others.length > 0
     ? ` ${DIM}(+${RESET}${others.slice(0, MAX_PROJECTS_SHOWN).map(sessionChip).join(`${DIM}, ${RESET}`)}${others.length > MAX_PROJECTS_SHOWN ? `${DIM}, +${others.length - MAX_PROJECTS_SHOWN}${RESET}` : ''}${DIM})${RESET}`
     : '';
   const memPart = state.processMemMb > 0 ? `${DIM} Mem:${RESET}${FG.cyan}${state.processMemMb}MB${RESET}` : '';
-  const selfSession = state.activeSessions.find(s => s.sessionId === state.sessionId);
   const ccVersion = selfSession?.version ?? state.version;
   const versionPart = ccVersion ? `${DIM} CC:${RESET}${FG.green}v${ccVersion}${RESET}` : '';
   lines.push(`${DIM} Sess:${RESET}${FG.cyan}${sessionsTotal}${RESET}${otherProjectsDisplay}${memPart}${versionPart}`);
@@ -532,11 +609,18 @@ export function renderDashboardLines(
     `${DIM} Files:${RESET}${FG.yellow}${state.editedFilesCount}${RESET}`,
   );
 
+  const cost = costLine(state);
+  if (cost) lines.push(cost);
+
   // Token analytics line
   const burnRateStr = state.tokenBurnRate > 0
     ? `${FG.cyan}${formatTokens(state.tokenBurnRate)}${RESET}${DIM}/min${RESET}`
     : `${DIM}--${RESET}`;
-  const compactStr = state.compactionCount > 0 ? `${FG.yellow}${state.compactionCount}${RESET}` : `${FG.green}0${RESET}`;
+  const lastCompaction = state.compactions[state.compactions.length - 1];
+  const compactDetail = lastCompaction
+    ? ` ${DIM}(${lastCompaction.trigger} ${formatTokens(lastCompaction.preTokens)}→${formatTokens(lastCompaction.postTokens)})${RESET}`
+    : '';
+  const compactStr = state.compactionCount > 0 ? `${FG.yellow}${state.compactionCount}${RESET}${compactDetail}` : `${FG.green}0${RESET}`;
   const peakStr = state.maxContextTokens > 0 ? `${FG.cyan}${formatTokens(state.maxContextTokens)}${RESET}` : `${DIM}--${RESET}`;
   const sparkW = Math.min(20, Math.max(0, W - 60));
   const spark = state.tokenHistory.length > 1 ? ` ${DIM}${sparkline(state.tokenHistory, sparkW)}${RESET}` : '';
@@ -614,6 +698,19 @@ export function renderDashboardLines(
     }
     if (currentLen > 0) lines.push(boxLine(currentLine, W));
   }
+  const dec = state.permissions.decisions;
+  if (dec.reject > 0) {
+    const byReason = Object.entries(dec.rejectByReason)
+      .map(([r, n]) => `${r} ${n}`).join(', ');
+    const hint = opts.showDenials ? '' : ` ${DIM}(d)${RESET}`;
+    lines.push(boxLine(`${FG.red}Denied:${dec.reject}${RESET}${byReason ? ` ${DIM}(${byReason})${RESET}` : ''}${hint}`, W));
+    if (opts.showDenials) {
+      for (const d of state.permissions.denials) {
+        const when = d.time ? `${formatTime(d.time)} ` : '';
+        lines.push(boxLine(truncateAnsi(`${FG.red}✗${RESET} ${DIM}${when}${RESET}${FG.yellow}${d.tool ?? '?'}${RESET} ${DIM}${d.kind ?? ''}${RESET} ${d.reason}`, W - 4), W));
+      }
+    }
+  }
   lines.push(boxBottom(W, FG.cyan));
 
   // Background tasks replace the Subagents box when present
@@ -650,6 +747,9 @@ export function renderDashboardLines(
     lines.push(boxLine(`${DIM}  /${h.name}${hArgs} at ${formatTime(h.endTime)}${RESET}`, W, FG.magenta));
   }
   lines.push(boxBottom(W, FG.magenta));
+
+  // Hooks (only when the transcript has hook_success attachments)
+  lines.push(...renderHooksBox(state, W));
 
   // Teams
   lines.push(boxTop('Teams', W, FG.blue));
@@ -715,11 +815,12 @@ export function renderDashboardLines(
   const canSwitch = state.activeSessions.length > 1;
   const nextHint = canSwitch ? ` ${BOLD}n${RESET}${DIM}:next${RESET}` : '';
   const bgHint = state.backgroundTasks.size > 0 ? ` ${BOLD}b${RESET}${DIM}:background${RESET}` : '';
+  const dHint = state.permissions.decisions.reject > 0 ? ` ${BOLD}d${RESET}${DIM}:denials${RESET}` : '';
   const switchedBadge = opts.isSwitchedView
     ? ` ${BG.yellow}${FG.black}${BOLD} VIEWING ${RESET}${FG.yellow}${BOLD} press r to return${RESET}`
     : '';
   lines.push(
-    `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${nextHint}${DIM} | auto 2s${RESET}${switchedBadge}`,
+    `${DIM} ${BOLD}q${RESET}${DIM}:quit ${BOLD}r${RESET}${DIM}:refresh ${BOLD}c${RESET}${DIM}:recap${RESET}${bgHint}${dHint} ${BOLD}i${RESET}${DIM}:info${RESET}${nextHint}${DIM} | auto 2s${RESET}${switchedBadge}`,
   );
   // Header/footer lines are free text; keep them inside the terminal width.
   return lines.map(l => (/^[│┌└]/.test(stripAnsi(l)) ? l : truncateAnsi(l, W)));
@@ -795,6 +896,91 @@ export function renderBackgroundViewLines(state: SessionState | null, opts: Rend
   return [...lines, ...scrollWindow(body, opts.scroll ?? 0, H, W, footer)];
 }
 
+/** Full-screen Info view: registry fields, URLs, compactions, cost, model catalog. */
+export function renderInfoViewLines(state: SessionState | null, opts: RenderOptions = {}): string[] {
+  const W = opts.width ?? Math.max(20, (process.stdout.columns || 80) - 1);
+  const H = opts.height ?? (process.stdout.rows || 40);
+  const now = opts.now ?? new Date();
+  const lines = [titleBar(W, now), pathLine(state, W)];
+  const footer = `${DIM} ${BOLD}Esc${RESET}${DIM}/${BOLD}i${RESET}${DIM}:back ${BOLD}j${RESET}${DIM}/${BOLD}k${RESET}${DIM}:scroll ${BOLD}q${RESET}${DIM}:quit${RESET}`;
+  if (!state) return [...lines, '', `${DIM}(no session)${RESET}`, footer];
+  const body: string[] = [];
+  const row = (k: string, v: string | number | null | undefined): void => {
+    if (v === null || v === undefined || v === '') return;
+    body.push(truncateAnsi(` ${DIM}${pad(k, 14)}${RESET} ${v}`, W));
+  };
+  const head = (t: string): void => { if (body.length) body.push(''); body.push(` ${BOLD}${FG.cyan}${t}${RESET}`); };
+
+  head('Session');
+  row('id', state.sessionId);
+  row('title', state.sessionTitle);
+  row('slug', state.slug);
+  row('cwd', state.cwd);
+  row('transcript', state.transcriptFile.replace(process.env.HOME || '', '~'));
+  row('version', state.version);
+  row('entrypoint', state.entrypoint);
+  row('model', state.model);
+  row('effort', state.effortLevel);
+  row('mode', state.permissions.mode);
+  row('scratchpad', state.scratchpadDir);
+
+  const self = state.activeSessions.find(s => s.sessionId === state.sessionId);
+  if (self) {
+    head('Registry');
+    row('pid', self.pid);
+    row('name', `${self.name ?? ''}${self.nameSource ? ` ${DIM}(${self.nameSource})${RESET}` : ''}`);
+    row('kind', self.kind);
+    row('entrypoint', self.entrypoint);
+    row('host session', self.hostSessionId);
+    row('status', `${self.status ?? ''}${self.statusUpdatedAt ? ` ${DIM}at ${formatTime(new Date(self.statusUpdatedAt))}${RESET}` : ''}`);
+    row('version', self.version);
+    row('socket', self.messagingSocketPath);
+    row('started', formatTime(self.startedAt));
+  }
+
+  head('Remote Control');
+  row('status', state.remoteControl.active ? `${FG.green}active${RESET}` : `${DIM}off${RESET}`);
+  row('url', state.remoteControl.url);
+  row('bridge', state.remoteControl.bridgeSessionId);
+
+  if (state.links.prs.length || state.links.artifacts.length || state.links.plan || state.links.feedbackDrafts.length) {
+    head('Links');
+    for (const pr of state.links.prs) row(`PR #${pr.number}`, `${pr.repository}  ${DIM}${pr.url}${RESET}`);
+    for (const a of state.links.artifacts) row('artifact', `${a.title}  ${DIM}${a.url}${RESET}`);
+    if (state.links.plan) row('plan', `${state.links.plan.path} ${DIM}(${formatTokens(state.links.plan.bytes)}B)${RESET}`);
+    for (const f of state.links.feedbackDrafts) row('feedback', `${f.type}: ${f.title}`);
+  }
+
+  if (state.compactions.length > 0) {
+    head('Compactions');
+    for (const c of state.compactions) {
+      row(c.at ? formatTime(c.at) : '?', `${c.trigger} ${formatTokens(c.preTokens)}→${formatTokens(c.postTokens)}${c.durationMs ? ` ${DIM}${(c.durationMs / 1000).toFixed(0)}s${RESET}` : ''}`);
+    }
+  }
+
+  if (state.cost) {
+    head(`Cost${state.cost.isPrevious ? ' (previous session)' : ''}`);
+    row('total', formatUsd(state.cost.totalUSD));
+    for (const [m, v] of Object.entries(state.cost.perModel)) row(shortModel(m), formatUsd(v));
+    row('api time', formatDurationCompact(state.cost.apiDurationMs));
+    row('lines', `+${state.cost.linesAdded} / -${state.cost.linesRemoved}`);
+  }
+
+  if (state.localCommands.length > 0) {
+    head('Local commands');
+    for (const c of state.localCommands) row(c.time ? formatTime(c.time) : '?', `${c.command} ${DIM}${c.args}${RESET}`);
+  }
+
+  if (state.modelCatalog) {
+    head(`Model catalog${state.modelCatalog.fetchedAt ? ` ${DIM}(fetched ${formatTime(state.modelCatalog.fetchedAt)})${RESET}` : ''}`);
+    for (const m of state.modelCatalog.models) {
+      row(shortModel(m.id), `${m.name}${m.fastMode ? ` ${FG.cyan}fast${RESET}` : ''}${m.effortOptions.length ? ` ${DIM}effort:${m.effortOptions.join('/')}${RESET}` : ''}${m.contextWindow ? ` ${DIM}ctx:${formatTokens(m.contextWindow)}${RESET}` : ''}`);
+    }
+  }
+
+  return [...lines, ...scrollWindow(body, opts.scroll ?? 0, H, W, footer)];
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -810,7 +996,9 @@ export function render(
     ? renderRecapViewLines(state, o)
     : view === 'background'
       ? renderBackgroundViewLines(state, o)
-      : renderDashboardLines(state, fileEvents, o);
+      : view === 'info'
+        ? renderInfoViewLines(state, o)
+        : renderDashboardLines(state, fileEvents, o);
   process.stdout.write(CLEAR + HIDE_CURSOR + lines.join('\n') + '\n');
 }
 

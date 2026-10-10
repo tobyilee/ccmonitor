@@ -112,9 +112,10 @@ export function createSessionState(ctx: ParseContext): SessionState {
     permissions: {
       mode: null,
       autoMode: null,
-      decisions: { accept: 0, reject: 0, byReason: {} },
+      decisions: { accept: 0, reject: 0, byReason: {}, rejectByReason: {} },
       denials: [],
     },
+    modelCatalog: null,
     links: { prs: [], artifacts: [], plan: null, feedbackDrafts: [] },
     queue: { depth: 0, preview: null },
     attribution: {

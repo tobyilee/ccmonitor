@@ -1,6 +1,6 @@
 # ccmonitor
 
-**Version: 1.6.0**
+**Version: 1.7.0**
 
 Real-time TUI dashboard for monitoring Claude Code sessions.
 
@@ -13,11 +13,12 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 ```
  Claude Code Monitor                                                  17:18:00    [#1e3a8a bg, #ffffff bold]
  /Users/you/workspace/my-project [main] — Add git branch to the header bar         [dim gray + magenta + cyan]
- Session:a1b2c3d4 Model:opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
- Turn:#7 done 4m02s · avg 2m10s · ▂▅▃▇▁
- Sess:3 (+●api-f3, ○docs-a1) CC:v2.1.220
+ Session:⌨ a1b2c3d4·merry-tarjan Model:opus-4-6 Effort:max Ctx:18% Age:12m 30s Idle:2s
+ Turn:#7 done 4m02s · avg 2m10s · ▂▅▃▇▁ Mode:auto(bash-first) RC●
+ Sess:3 (+●api-f3, 🖥○docs-a1) CC:v2.1.296
  Msgs:U:5 A:12 Tok:I:45.2K O:8.3K CW:12.1K CR:38.0K Files:12
- Rate:8.2K/min Compact:1 Peak:245.3K ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
+ Cost:$1.03 API:1m23s Tools:1.3s +12/-3 opus-4-6:$1.03
+ Rate:8.2K/min Compact:1 (auto 180.2K→14.1K) Peak:245.3K ⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿⣶⣤⣀⣤⣶⣿⣿
  Quota 5h:████░░░░░░ 42% (2h 15m) 7d:██░░░░░░░░ 18% (5d 3h)
 ┌─ Last Prompt  17:17:45 ─────────────────────────────────────────────────────┐
 │ add a feature to show git branch next to the current path, and adjust the   │
@@ -33,6 +34,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Tools ─────────────────────────────────────────────────────────────────────┐
 │ Edit:15 Bash:12 Read:8 Grep:5 Agent:3 Skill:2 Write:1                        │
+│ Denied:1 (hook 1) (d)                                                       │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Background  1 running ─────────────────────────────────────────────────────┐
 │ ● agent Explore "Find auth middleware files" 1m22s opus-4-6                 │
@@ -42,6 +44,9 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ ● /commit (Fix login bug)  3s                                               │
 │   /oh-my-claudecode:plan at 17:15:02                                        │
 │   /deep-interview at 17:10:44                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌─ Hooks ─────────────────────────────────────────────────────────────────────┐
+│ PreToolUse:37 Stop:3 SessionStart:1  errors:0                               │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌─ Teams ─────────────────────────────────────────────────────────────────────┐
 │ research-team (3)                                                           │
@@ -63,7 +68,7 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 │ change 17:18:02  ~/.claude/projects/-Users-you-workspace/abc123.jsonl       │
 │ add    17:17:58  ~/.claude/tasks/abc123/task-42.json                        │
 └─────────────────────────────────────────────────────────────────────────────┘
- q:quit r:refresh c:recap b:background n:next | auto 2s
+ q:quit r:refresh c:recap b:background d:denials i:info n:next | auto 2s
 ```
 
 ### Visual highlights
@@ -73,7 +78,11 @@ The dashboard refreshes every 2 seconds and renders entirely with ANSI escape co
 - **Recap** — `CC:` is Claude Code's own one-line session recap (`system/away_summary`, written a few minutes after a turn ends; disable with `/config`). Below the divider is the "Korean recap" section of Claude's last reply, or its first lines. While Claude is working the title turns yellow and a `now:` line shows the latest mid-turn narration. Press `c` for the full reply.
 - **Turn line** — elapsed time and tool calls of the open turn, or the last turn's duration, the average, and a sparkline of the last 10 turns (from `system/turn_duration`).
 - **Background** — async `Agent` runs, `run_in_background` Bash commands and Monitors with status, elapsed time, exit code and model. Replaces the Subagents box when present. Press `b` for each task's output tail.
-- **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
+- **Mode / RC chips** — `Mode:auto(bash-first)` is the permission mode the session runs under (cyan auto, magenta plan, red bypassPermissions); `RC●` means Remote Control is active (URL in the `i` view).
+- **Cost line** — total and per-model cost, API time, tool time and lines added/removed from the transcript's `cost-state` entry; `(prev session)` when it falls back to `~/.claude.json`.
+- **Denied strip** — count of rejected tool calls by reason inside the Tools box; `d` expands the last 5 with the blocking rule.
+- **Hooks** — per-event hook run counts, non-zero exits, and a `STOP BLOCKED` badge when a Stop hook prevented the turn from ending.
+- **Session counter** — `Sess:N` (on its own line) shows how many Claude Code processes are alive across all terminals, plus up to four other sessions as registry-name chips (e.g. `ccmonitor-b6`) with a live status dot: yellow `●`=busy, red `●`=waiting for user input, dim `○`=idle, grey `?`=status older than 10 minutes. `🖥` marks Claude Desktop sessions. Additional sessions beyond the first four are shown as a `+N` overflow count. `CC:vX.Y.Z` shows the Claude Code version running the current session.
 - **Files counter** — `Files:N` shows the number of unique files edited in this session (derived from `file-history/<sessionId>/` and deduplicated by version).
 - **Last Prompt** — shows the most recent user-typed prompt with the timestamp in the box title, CJK-aware word wrap, and a 500-character hard cap. Sourced from the transcript's dedicated `last-prompt` entries (verbatim text); falls back to tag-stripping heuristics for old transcripts.
 - **Memory panel** — summarizes the auto-memory system for this project: MEMORY.md size, topic count, category breakdown by filename prefix, and the 3 most recently modified topics.
@@ -145,6 +154,8 @@ bun run start <sessionId>
 
 - `c` — full-screen Recap view (the whole final reply); `j`/`k`, arrows, Space/PageUp/PageDown scroll; `Esc` or `c` returns
 - `b` — full-screen Background view with the last 20 lines of each task's output file; same scroll keys
+- `i` — full-screen Info view: registry fields, Remote Control / PR / artifact URLs, compactions, cost per model, model catalog
+- `d` — expand/collapse the denial list under Tools
 - `r` — force refresh (also clears any switched-session view)
 - `n` — cycle to the next live Claude Code session across all projects (only useful when multiple sessions are active)
 - `Esc` — back to the dashboard
@@ -173,7 +184,8 @@ bun run build    # outputs dist/ccmonitor
 |-------|-------|
 | **Last Prompt** | The most recent user-typed prompt (wrapped to fit, truncated at 500 chars) |
 | **Recap** | Claude Code's native recap (`CC:`), the Korean recap section or first lines of the final reply, `now:` narration while a turn is open |
-| **Tools** | Tool call counts, sorted by frequency |
+| **Tools** | Tool call counts, sorted by frequency; `Denied:N` strip when tool calls were rejected |
+| **Hooks** | Hook runs per event, errors, `STOP BLOCKED` badge (shown when the session has hook activity) |
 | **Background** | Async agents, background Bash commands and Monitors with status, elapsed, exit code, model (replaces Subagents when present) |
 | **Subagents** | Running/completed agents with type, duration, description (when no background tasks exist) |
 | **Skill** | Active skill with elapsed time, last completed skill, history |
@@ -341,4 +353,4 @@ Not extracted from transcripts — instead, [chokidar](https://github.com/paulmi
 | `teams/**/*` | Team configs & inboxes |
 | `sessions/*.json` | Active session registry |
 | `file-history/**/*` | File change history |
-| `.omc/state/last-skill-complete.json` | Hook-based skill completion signal |
+| `.omc/state/last-skill-complete.json` | Hook-based skill completion signal (optional) |

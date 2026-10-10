@@ -384,7 +384,7 @@ export interface Denial {
 export interface PermissionInfo {
   mode: string | null;
   autoMode: { bashFirst: boolean; steerOnly: boolean; bypass: boolean } | null;
-  decisions: { accept: number; reject: number; byReason: Record<string, number> };
+  decisions: { accept: number; reject: number; byReason: Record<string, number>; rejectByReason: Record<string, number> };
   denials: Denial[];
 }
 
@@ -421,6 +421,22 @@ export interface ErrorInfo {
   api: Array<{ status: number | null; code: string | null; text: string; time: Date | null }>;
   interrupts: number;
   abortedMidStream: number;
+}
+
+export interface ModelCatalogEntry {
+  id: string;
+  name: string;
+  section: string | null;
+  fastMode: boolean;
+  effortOptions: string[];
+  /** Context window in tokens when the catalog publishes one (it does not today). */
+  contextWindow: number | null;
+  minVersion: string | null;
+}
+
+export interface ModelCatalogInfo {
+  models: ModelCatalogEntry[];
+  fetchedAt: Date | null;
 }
 
 export interface EditedFile {
@@ -532,6 +548,8 @@ export interface SessionState {
   // --- v1.7 ---
   cost: CostInfo | null;
   permissions: PermissionInfo;
+  /** Cached model catalog (`~/.claude/cache/model-catalog`). Loader-filled. */
+  modelCatalog: ModelCatalogInfo | null;
 
   // --- v1.8 ---
   links: LinksInfo;

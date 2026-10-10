@@ -354,3 +354,102 @@ describe('derived values', () => {
     expect(exact.compactions[0]?.preTokens).toBe(534977);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 2 (v1.7): cost fallback, model catalog, hooks, permissions
+// ---------------------------------------------------------------------------
+
+import { loadPreviousCost } from './loaders/globalConfig.js';
+import { loadModelCatalog, parseModelCatalog } from './loaders/modelCatalog.js';
+
+describe('loadPreviousCost (T2.1)', () => {
+  test('reads projects[cwd].lastCost as a previous-session cost', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-cfg-'));
+    const cfg = join(dir, 'claude.json');
+    writeFileSync(cfg, JSON.stringify({
+      projects: { '/Users/dev/p': { lastCost: 0.25, lastAPIDuration: 1000, lastModelUsage: { 'claude-opus-5-5': { costUSD: 0.25 } } } },
+    }));
+    const c = loadPreviousCost('/Users/dev/p', cfg);
+    expect(c?.totalUSD).toBe(0.25);
+    expect(c?.isPrevious).toBe(true);
+    expect(c?.perModel['claude-opus-5-5']).toBe(0.25);
+    expect(loadPreviousCost('/Users/dev/other', cfg)).toBeNull();
+    expect(loadPreviousCost('/Users/dev/p', join(dir, 'missing.json'))).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('model catalog loader (T2.2)', () => {
+  const doc = {
+    version: 2, fetchedAt: 1790405043367,
+    catalog: { config: { models: [
+      { id: 'claude-fable-5-1', name: 'Fable 5.1', section: 'main', thinking: { effort_options: [{ id: 'low' }, { id: 'max' }] } },
+      { id: 'claude-opus-5-5', name: 'Opus 5.5', fast_mode: { available: true } },
+    ] } },
+  };
+  test('parses ids, effort options and fast mode', () => {
+    const cat = parseModelCatalog(doc)!;
+    expect(cat.models.map(m => m.id)).toEqual(['claude-fable-5-1', 'claude-opus-5-5']);
+    expect(cat.models[0]?.effortOptions).toEqual(['low', 'max']);
+    expect(cat.models[1]?.fastMode).toBe(true);
+    expect(cat.models[0]?.contextWindow).toBeNull();
+    expect(cat.fetchedAt?.getTime()).toBe(1790405043367);
+  });
+  test('reads the newest file in a directory; empty dir → null', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccm-cat-'));
+    expect(loadModelCatalog(dir)).toBeNull();
+    writeFileSync(join(dir, 'a.json'), JSON.stringify(doc));
+    const cat = loadModelCatalog(dir);
+    expect(cat?.models.map(m => m.id)).toContain('claude-fable-5-1');
+    expect(cat?.models.map(m => m.id)).toContain('claude-opus-5-5');
+    expect(loadModelCatalog(join(dir, 'nope'))).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  test('real cache (if present) lists the current models', () => {
+    const real = join(process.env.HOME ?? '', '.claude', 'cache', 'model-catalog');
+    const cat = loadModelCatalog(real);
+    if (!cat) return; // machine without a cache
+    expect(cat.models.length).toBeGreaterThan(0);
+    expect(cat.models.every(m => typeof m.id === 'string' && m.id.length > 0)).toBe(true);
+  });
+});
+
+describe('hooks (T2.4)', () => {
+  test('stop_hook_summary sets stopBlocked; turn_duration resets it', () => {
+    const base = [human('go', 0), assistantLine('m1', 'end_turn', [{ type: 'text', text: 'ok' }], 1)];
+    const blocked = parseTranscriptLines([...base, system('stop_hook_summary', 2, { hookCount: 1, preventedContinuation: true })], ctx);
+    expect(blocked.hooks.stopBlocked).toBe(true);
+    const reset = parseTranscriptLines([...base, system('stop_hook_summary', 2, { hookCount: 1, preventedContinuation: true }), system('turn_duration', 3, { durationMs: 10 })], ctx);
+    expect(reset.hooks.stopBlocked).toBe(false);
+  });
+  test('non-zero exitCode hook_success is recorded as an error', () => {
+    const att = JSON.stringify({ type: 'attachment', uuid: 'h1', timestamp: ts(1), attachment: { type: 'hook_success', hookName: 'PreToolUse:Bash', hookEvent: 'PreToolUse', exitCode: 2, stderr: 'boom\nmore' } });
+    const ok = JSON.stringify({ type: 'attachment', uuid: 'h2', timestamp: ts(2), attachment: { type: 'hook_success', hookName: 'Stop', hookEvent: 'Stop', exitCode: 0 } });
+    const s = parseTranscriptLines([human('go', 0), att, ok], ctx);
+    expect(s.hooks.total).toBe(2);
+    expect(s.hooks.byEvent).toEqual({ PreToolUse: 1, Stop: 1 });
+    expect(s.hooks.errors).toHaveLength(1);
+    expect(s.hooks.errors[0]).toMatchObject({ hookName: 'PreToolUse:Bash', exitCode: 2, stderr: 'boom' });
+  });
+});
+
+describe('permissions (T2.3)', () => {
+  test('denials capture tool name, kind and first line of the error', () => {
+    const lines = [
+      human('go', 0),
+      JSON.stringify({ type: 'permission-mode', permissionMode: 'auto' }),
+      JSON.stringify({ type: 'attachment', uuid: 'am', timestamp: ts(0), attachment: { type: 'auto_mode', bashFirst: true, steerOnly: true, bypass: false } }),
+      assistantLine('m1', 'tool_use', [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git push --force' } }], 1),
+      toolResult('t1', 2, { toolDenialKind: 'permission-rule', permissionDecision: { decision: 'reject', source: 'hook', reasonType: 'hook' } },
+        'PreToolUse:Bash hook error: BLOCKED by scripts/hooks/guard-bash.sh\n\n  Rule: no force push'),
+      assistantLine('m2', 'tool_use', [{ type: 'tool_use', id: 't2', name: 'Read', input: {} }], 3),
+      toolResult('t2', 4, { permissionDecision: { decision: 'accept', source: 'config', reasonType: 'classifier' } }),
+    ];
+    const s = parseTranscriptLines(lines, ctx);
+    expect(s.permissions.mode).toBe('auto');
+    expect(s.permissions.autoMode?.bashFirst).toBe(true);
+    expect(s.permissions.decisions).toEqual({ accept: 1, reject: 1, byReason: { hook: 1, classifier: 1 }, rejectByReason: { hook: 1 } });
+    expect(s.permissions.denials[0]).toMatchObject({ tool: 'Bash', kind: 'permission-rule' });
+    expect(s.permissions.denials[0]?.reason).toContain('BLOCKED by scripts/hooks/guard-bash.sh');
+  });
+});

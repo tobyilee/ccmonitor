@@ -25,6 +25,8 @@ import { loadEffortLevel } from './loaders/effort.js';
 import { loadRateLimit } from './loaders/rateLimit.js';
 import { loadProcessMemMb } from './loaders/process.js';
 import { loadScratchpadTasks } from './loaders/scratchpad.js';
+import { loadPreviousCost } from './loaders/globalConfig.js';
+import { loadModelCatalog } from './loaders/modelCatalog.js';
 import { fileUnknownLogger } from './unknownFields.js';
 
 export { extractRealUserPrompt, processEntry, compareVersions } from './entry.js';
@@ -65,7 +67,8 @@ export function parseTranscriptLines(lines: string[], ctx: ParseContext): Sessio
 }
 
 /** Map model string to its context window size in tokens. */
-export function getModelContextWindow(model: string): number {
+export function getModelContextWindow(model: string, catalogWindow: number | null = null): number {
+  if (catalogWindow && catalogWindow > 0) return catalogWindow;
   const m = model.toLowerCase();
   if (m.includes('[1m]')) return 1_000_000;
   if (/opus-4-(?:[5-9]|\d{2,})/.test(m)) return 1_000_000;
@@ -76,7 +79,8 @@ export function getModelContextWindow(model: string): number {
 
 /** Derived numbers computed from the parsed state (pure). */
 export function computeDerived(state: SessionState): void {
-  state.contextWindow = getModelContextWindow(state.model);
+  const catalogEntry = state.modelCatalog?.models.find(m => m.id === state.model) ?? null;
+  state.contextWindow = getModelContextWindow(state.model, catalogEntry?.contextWindow ?? null);
   state.contextPercent = state.contextTokens > 0
     ? Math.round((state.contextTokens / state.contextWindow) * 100)
     : 0;
@@ -136,6 +140,8 @@ export function enrichSessionState(parsed: SessionState, opts: EnrichOptions = {
   state.memory = loadMemoryInfo(state.projectDir);
   state.effortLevel = state.effortLevel ?? loadEffortLevel(realCwd);
   loadScratchpadTasks(state.backgroundTasks);
+  state.modelCatalog = loadModelCatalog();
+  if (!state.cost && !opts.skipLive) state.cost = loadPreviousCost(realCwd);
 
   if (!opts.skipLive) {
     state.activeSessions = loadActiveSessions();

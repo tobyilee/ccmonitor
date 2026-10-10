@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-10
+
+### Added
+- **Cost line (F4).** `Cost:$1.03 API:1m23s Tools:1.3s +12/-3 fable-5-1:$1.03 haiku:$0.00` from the transcript's `cost-state` entry (Claude Code writes it at turn ends and on exit). When the transcript has none, the previous session's cost from `~/.claude.json` → `projects[cwd].lastCost` is shown with a `(prev session)` tag. Red when `hasUnknownModelCost`.
+- **Exact compaction (F5).** `Compact:2 (manual 535.0K→13.8K)` from `system/compact_boundary`. The >30 percent heuristic is used only for transcripts older than Claude Code 2.1.280. A model-catalog loader reads `~/.claude/cache/model-catalog/*.json` (model ids, effort options, fast-mode availability; a published context size is honoured when one appears) and lists the models in the `i` view.
+- **Permission strip (F6).** `Mode:auto(bash-first)` chip on the Turn line (cyan auto, magenta plan, red bypassPermissions), from `permission-mode` entries, the `permissionMode` on prompts and the `auto_mode` attachment. A red `Denied:N (hook 1, rule 1)` line inside the Tools box counts `permissionDecision: reject`; `d` expands the last 5 denials with time, tool, `toolDenialKind` and the blocking rule's first line (hook-error prefix stripped).
+- **Hooks box (F7).** `PreToolUse:162 Stop:3 SessionStart:1  errors:0` from `hook_success` attachments, counted per `hookEvent` dynamically; non-zero exit codes are listed with the hook name and first stderr line; `STOP BLOCKED` badge when the latest `stop_hook_summary` has `preventedContinuation`. The `scripts/on-skill-complete.sh` hook is now optional.
+- **Identity and Remote Control (F8).** Title precedence `custom-title` > `agent-name` > `ai-title`; the plan slug is shown dim after the session id; `⌨` / `🖥` entrypoint icon (CLI / Claude Desktop) before the session id and on other-session chips; a session whose registry status is older than 10 minutes shows a grey `?`; `RC●` / `RC○` for Remote Control (`system/bridge_status`).
+- **`i` info view.** Session and registry fields (pid, kind, entrypoint, name source, status time, socket path, host session), Remote Control URL, PR and artifact URLs, compaction history, cost per model, local slash commands, and the model catalog. Scrolls like the other views.
+
+### Changed
+- Registry entries now carry `kind`, `entrypoint`, `hostSessionId`, `nameSource`, `statusUpdatedAt`, `messagingSocketPath` (`AvailableSession`). `.key` files are never read.
+- Denial reasons strip the `PreToolUse:Bash hook error: [script]:` prefix.
+
 ## [1.6.0] - 2026-10-10
 
 ### Added

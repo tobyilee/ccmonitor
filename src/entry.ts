@@ -322,7 +322,9 @@ function handleSystem(s: ParseSession, entry: TranscriptEntry, time: Date | null
       if (entry.url) state.remoteControl.url = entry.url;
       break;
     case 'local_command': {
-      const cmd = entry.commandRun?.command ?? firstLine(entry.content ?? '');
+      const content = entry.content ?? '';
+      const tagged = /<command-name>\s*([^<]+?)\s*<\/command-name>/.exec(content)?.[1];
+      const cmd = entry.commandRun?.command ?? tagged ?? firstLine(content);
       if (cmd) {
         state.localCommands.push({ command: cmd, args: entry.commandRun?.args ?? '', time });
         if (state.localCommands.length > MAX_LOCAL_COMMANDS) state.localCommands.shift();
@@ -651,7 +653,10 @@ function handleUser(s: ParseSession, entry: TranscriptEntry, time: Date | null, 
   const pd = entry.permissionDecision;
   if (pd) {
     if (pd.decision === 'accept') state.permissions.decisions.accept++;
-    else if (pd.decision === 'reject') state.permissions.decisions.reject++;
+    else if (pd.decision === 'reject') {
+      state.permissions.decisions.reject++;
+      bump(state.permissions.decisions.rejectByReason, pd.reasonType ?? 'none');
+    }
     bump(state.permissions.decisions.byReason, pd.reasonType ?? 'none');
   }
 
@@ -673,10 +678,14 @@ function handleUser(s: ParseSession, entry: TranscriptEntry, time: Date | null, 
       }
     }
     if (entry.toolDenialKind) {
+      // "PreToolUse:Bash hook error: [<script>]: BLOCKED by …" → "BLOCKED by …"
+      const reason = firstLine(toolResultText(block))
+        .replace(/^[A-Za-z]+:[A-Za-z_]+ hook error:\s*(?:\[[^\]]*\]:\s*)?/, '')
+        .slice(0, 200);
       state.permissions.denials.push({
         tool: pending?.name ?? null,
         kind: entry.toolDenialKind,
-        reason: firstLine(toolResultText(block)).slice(0, 200),
+        reason,
         time,
       });
       if (state.permissions.denials.length > MAX_DENIALS) state.permissions.denials.shift();
