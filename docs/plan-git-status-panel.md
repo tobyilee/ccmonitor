@@ -72,4 +72,4 @@
 | T1 | `src/gitStatus.test.ts`: every porcelain code class, renames/copies, spaces, empty output; temporary `git init` repository gives `1/1/1`; non-repository gives `null`; TTL cache returns the old value then refreshes in the background. `tsc --noEmit` clean. |
 | T2 | `src/ui.test.ts` "git status box": summary row, `??`/`A `/` D` rows, `… 5 more`, `clean`, `(not a git repository)`; width sweep 80/100/140. Golden diff: only the File Activity box replaced by the Git Status box (3 files). |
 | T3 | `grep -rn chokidar src package.json` empty; `bun install` removed 1 package; `bun run build` ok. |
-| T4 | Binary run in this repository under `expect` (pty 100×60) showed `+3 new  ~13 modified  -0 deleted` and the first 8 ` M` rows, matching `git status --short` (3 untracked, 13 modified). `bun test` 115 pass. |
+| T4 | Binary run in this repository under `expect` (pty 100×60) showed `+3 new  ~13 modified  -0 deleted` and the first 8 ` M` rows, matching `git status --short` (3 untracked, 13 modified). `bun test` 110 pass, `tsc` clean; the golden mask now also collapses the title-bar padding (v1.10.0 is one character longer than v1.9.1). |
